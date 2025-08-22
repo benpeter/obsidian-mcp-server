@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-08-22
+
+### Changed
+
+- **Core Architecture & Transport Layer**:
+  - **`mcp-ts-template` Alignment**: Updated the server to align with the latest changes in the [`mcp-ts-template` v1.8.0](https://github.com/cyanheads/mcp-ts-template/blob/main/CHANGELOG.md), including improvements to the project structure and configuration.
+  - **Architectural Overhaul**: Migrated the entire server to a more robust and modular architecture. This includes a clear separation of concerns between the transport layer, session management, and tool logic, improving maintainability and scalability.
+  - **Transport Layer Refactor**: Re-engineered the HTTP transport layer to support both stateful and stateless session modes. This provides greater flexibility for different client implementations and improves overall performance.
+
+- **Obsidian Service Layer**:
+  - **Obsidian Service Modernization**: The `ObsidianRestApiService` has been completely refactored to use `openapi-fetch` with generated types from the OpenAPI specification. This ensures type safety and makes it easier to maintain and extend the service.
+  - **Generated Types**: All API-related types are now generated directly from the OpenAPI specification, ensuring they are always up-to-date and accurate.
+  - **Method Removal**: Removed the old, manually-crafted API methods in favor of direct calls to the `openapi-fetch` client.
+
+- **Tooling & Schemas**:
+  - **Tooling and Schema Enhancements**: Standardized the tool implementation pattern with a clear separation of logic, registration, and schema definitions. This makes it easier to add and maintain tools.
+  - **Standardized Pattern**: All tools now follow the 'Logic Throws, Handler Catches' pattern, with a clear separation of concerns between the `logic.ts` and `registration.ts` files.
+  - **Service Layer Integration**: All tools now use the new `ObsidianRestApiService`, leveraging its type safety and improved error handling.
+  - **Schema Enhancements**: All tool schemas have been updated to provide clearer descriptions for the LLM and to ensure consistency across the toolset.
+
+- **Dependencies**:
+  - **Dependency Updates**: Updated all dependencies to their latest stable versions, ensuring the project benefits from the latest features and security patches.
+
 ## [2.0.7] - 2025-06-20
 
 ### Changed

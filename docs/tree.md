@@ -1,21 +1,24 @@
 # obsidian-mcp-server - Directory Structure
 
-Generated on: 2025-06-21 02:20:52
+Generated on: 2025-08-22 09:27:58
 
 ```
 obsidian-mcp-server
+├── .clinerules
+│   └── clinerules.md
 ├── .github
 │   ├── workflows
 │   │   └── publish.yml
 │   └── FUNDING.yml
 ├── docs
 │   ├── obsidian-api
-│   │   ├── obsidian_rest_api_spec.json
 │   │   └── obsidian_rest_api_spec.yaml
+│   ├── devdocs.md
 │   ├── obsidian_mcp_tools_spec.md
 │   └── tree.md
 ├── scripts
 │   ├── clean.ts
+│   ├── devdocs.ts
 │   ├── fetch-openapi-spec.ts
 │   ├── make-executable.ts
 │   └── tree.ts
@@ -24,7 +27,7 @@ obsidian-mcp-server
 │   │   └── index.ts
 │   ├── mcp-server
 │   │   ├── tools
-│   │   │   ├── obsidianDeleteFileTool
+│   │   │   ├── obsidianDeleteNoteTool
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
@@ -32,7 +35,7 @@ obsidian-mcp-server
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   ├── obsidianListFilesTool
+│   │   │   ├── obsidianListNotesTool
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
@@ -44,7 +47,7 @@ obsidian-mcp-server
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   ├── obsidianReadFileTool
+│   │   │   ├── obsidianReadNoteTool
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
@@ -52,58 +55,65 @@ obsidian-mcp-server
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── logic.ts
 │   │   │   │   └── registration.ts
-│   │   │   └── obsidianUpdateNoteTool
-│   │   │       ├── index.ts
-│   │   │       ├── logic.ts
-│   │   │       └── registration.ts
+│   │   │   ├── obsidianUpdateNoteTool
+│   │   │   │   ├── index.ts
+│   │   │   │   ├── logic.ts
+│   │   │   │   └── registration.ts
+│   │   │   └── schemas
+│   │   │       └── jsonSchema.ts
 │   │   ├── transports
 │   │   │   ├── auth
-│   │   │   │   ├── core
-│   │   │   │   │   ├── authContext.ts
-│   │   │   │   │   ├── authTypes.ts
-│   │   │   │   │   └── authUtils.ts
+│   │   │   │   ├── lib
 │   │   │   │   ├── strategies
-│   │   │   │   │   ├── jwt
-│   │   │   │   │   │   └── jwtMiddleware.ts
-│   │   │   │   │   └── oauth
-│   │   │   │   │       └── oauthMiddleware.ts
+│   │   │   │   │   ├── authStrategy.ts
+│   │   │   │   │   ├── jwtStrategy.ts
+│   │   │   │   │   └── oauthStrategy.ts
+│   │   │   │   ├── authFactory.ts
+│   │   │   │   ├── authMiddleware.ts
 │   │   │   │   └── index.ts
-│   │   │   ├── httpErrorHandler.ts
-│   │   │   ├── httpTransport.ts
-│   │   │   └── stdioTransport.ts
+│   │   │   ├── core
+│   │   │   │   ├── baseTransportManager.ts
+│   │   │   │   ├── honoNodeBridge.ts
+│   │   │   │   ├── statefulTransportManager.ts
+│   │   │   │   ├── statelessTransportManager.ts
+│   │   │   │   └── transportTypes.ts
+│   │   │   ├── http
+│   │   │   │   ├── httpErrorHandler.ts
+│   │   │   │   ├── httpTransport.ts
+│   │   │   │   ├── httpTypes.ts
+│   │   │   │   ├── index.ts
+│   │   │   │   └── mcpTransportMiddleware.ts
+│   │   │   └── stdio
+│   │   │       ├── index.ts
+│   │   │       └── stdioTransport.ts
 │   │   └── server.ts
 │   ├── services
 │   │   └── obsidianRestAPI
-│   │       ├── methods
-│   │       │   ├── activeFileMethods.ts
-│   │       │   ├── commandMethods.ts
-│   │       │   ├── openMethods.ts
-│   │       │   ├── patchMethods.ts
-│   │       │   ├── periodicNoteMethods.ts
-│   │       │   ├── searchMethods.ts
-│   │       │   └── vaultMethods.ts
+│   │       ├── utils
+│   │       │   ├── apiErrors.ts
+│   │       │   ├── formatting.ts
+│   │       │   ├── index.ts
+│   │       │   ├── pathEncoding.ts
+│   │       │   └── pathResolver.ts
 │   │       ├── vaultCache
 │   │       │   ├── index.ts
 │   │       │   └── service.ts
+│   │       ├── generated-types.ts
 │   │       ├── index.ts
-│   │       ├── service.ts
-│   │       └── types.ts
+│   │       └── service.ts
 │   ├── types-global
 │   │   └── errors.ts
 │   ├── utils
 │   │   ├── internal
 │   │   │   ├── asyncUtils.ts
 │   │   │   ├── errorHandler.ts
+│   │   │   ├── fetch.ts
 │   │   │   ├── index.ts
 │   │   │   ├── logger.ts
 │   │   │   └── requestContext.ts
 │   │   ├── metrics
 │   │   │   ├── index.ts
 │   │   │   └── tokenCounter.ts
-│   │   ├── obsidian
-│   │   │   ├── index.ts
-│   │   │   ├── obsidianApiUtils.ts
-│   │   │   └── obsidianStatUtils.ts
 │   │   ├── parsing
 │   │   │   ├── dateParser.ts
 │   │   │   ├── index.ts
@@ -115,7 +125,6 @@ obsidian-mcp-server
 │   │   │   └── sanitization.ts
 │   │   └── index.ts
 │   └── index.ts
-├── .clinerules
 ├── .gitignore
 ├── .ncurc.json
 ├── CHANGELOG.md
