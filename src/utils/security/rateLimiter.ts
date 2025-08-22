@@ -1,79 +1,48 @@
-/**
- * @fileoverview Provides a generic rate limiter class to manage request rates
- * based on configurable time windows and request counts. It supports custom
- * key generation, periodic cleanup of expired entries, and skipping rate
- * limiting in development environments.
- * @module src/utils/security/rateLimiter
- */
-
 import { BaseErrorCode, McpError } from "../../types-global/errors.js";
-import { environment } from "../../config/index.js";
-import {
-  logger,
-  RequestContext,
-  requestContextService,
-} from "../internal/index.js"; // Use internal index for RequestContext
+// Import config and utils
+import { environment } from "../../config/index.js"; // Import environment from config
+import { logger, RequestContext } from "../index.js";
 
 /**
- * Configuration options for the {@link RateLimiter}.
+ * Rate limiting configuration options
  */
 export interface RateLimitConfig {
-  /** Time window in milliseconds during which requests are counted. */
+  /** Time window in milliseconds */
   windowMs: number;
-  /** Maximum number of requests allowed from a single key within the `windowMs`. */
+  /** Maximum number of requests allowed in the window */
   maxRequests: number;
-  /**
-   * Custom error message template when rate limit is exceeded.
-   * Use `{waitTime}` as a placeholder for the remaining seconds until reset.
-   * Defaults to "Rate limit exceeded. Please try again in {waitTime} seconds."
-   */
+  /** Custom error message template */
   errorMessage?: string;
-  /**
-   * If `true`, rate limiting checks will be skipped if `process.env.NODE_ENV` is 'development'.
-   * Defaults to `false`.
-   */
+  /** Whether to skip rate limiting in certain environments (e.g. development) */
   skipInDevelopment?: boolean;
-  /**
-   * An optional function to generate a unique key for rate limiting based on an identifier
-   * and optional request context. If not provided, the raw identifier is used as the key.
-   * @param identifier - The base identifier (e.g., IP address, user ID).
-   * @param context - Optional request context.
-   * @returns A string to be used as the rate limiting key.
-   */
+  /** Custom key generator function */
   keyGenerator?: (identifier: string, context?: RequestContext) => string;
-  /**
-   * Interval in milliseconds for cleaning up expired rate limit entries from memory.
-   * Defaults to 5 minutes. Set to `0` or `null` to disable automatic cleanup.
-   */
-  cleanupInterval?: number | null;
+  /** How often to run cleanup of expired entries (in milliseconds) */
+  cleanupInterval?: number;
 }
 
 /**
- * Represents an individual entry in the rate limiter's tracking store.
- * @internal
+ * Individual rate limit entry
  */
 export interface RateLimitEntry {
-  /** The current count of requests within the window. */
+  /** Current request count */
   count: number;
-  /** The timestamp (milliseconds since epoch) when the current window resets. */
+  /** When the window resets (timestamp) */
   resetTime: number;
 }
 
 /**
- * A generic rate limiter class that can be used to control the frequency of
- * operations or requests from various sources. It stores request counts in memory.
+ * Generic rate limiter that can be used across the application
  */
 export class RateLimiter {
+  /** Map storing rate limit data */
   private limits: Map<string, RateLimitEntry>;
+  /** Cleanup interval timer */
   private cleanupTimer: NodeJS.Timeout | null = null;
-  private currentConfig: RateLimitConfig; // Renamed from 'config' to avoid conflict with global 'config'
-
-  /**
-   * Default configuration values for the rate limiter.
-   */
+  /** Default configuration */
   private static DEFAULT_CONFIG: RateLimitConfig = {
     windowMs: 15 * 60 * 1000, // 15 minutes
-    maxRequests: 100,
+    maxRequests: 100, // 100 requests per window
     errorMessage:
       "Rate limit exceeded. Please try again in {waitTime} seconds.",
     skipInDevelopment: false,
@@ -81,37 +50,34 @@ export class RateLimiter {
   };
 
   /**
-   * Creates a new `RateLimiter` instance.
-   * @param {Partial<RateLimitConfig>} [initialConfig={}] - Optional initial configuration
-   *   to override default settings.
+   * Create a new rate limiter
+   * @param config Rate limiting configuration
    */
-  constructor(initialConfig: Partial<RateLimitConfig> = {}) {
-    this.currentConfig = { ...RateLimiter.DEFAULT_CONFIG, ...initialConfig };
+  constructor(private config: RateLimitConfig) {
+    this.config = { ...RateLimiter.DEFAULT_CONFIG, ...config };
     this.limits = new Map();
     this.startCleanupTimer();
-    // Initial log message about instantiation can be done by the code that creates the singleton instance,
-    // after logger itself is fully initialized.
+
+    // Removed logger call from constructor to prevent logging before initialization
   }
 
   /**
-   * Starts the periodic cleanup timer for expired rate limit entries.
-   * If a timer already exists, it's cleared and restarted.
-   * @private
+   * Start the cleanup timer to periodically remove expired entries
    */
   private startCleanupTimer(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
-      this.cleanupTimer = null;
     }
 
-    const interval = this.currentConfig.cleanupInterval;
+    const interval =
+      this.config.cleanupInterval ?? RateLimiter.DEFAULT_CONFIG.cleanupInterval;
 
-    if (interval && interval > 0) {
+    if (interval) {
       this.cleanupTimer = setInterval(() => {
         this.cleanupExpiredEntries();
       }, interval);
 
-      // Allow Node.js to exit if this timer is the only thing running.
+      // Ensure the timer doesn't prevent the process from exiting
       if (this.cleanupTimer.unref) {
         this.cleanupTimer.unref();
       }
@@ -119,17 +85,13 @@ export class RateLimiter {
   }
 
   /**
-   * Removes expired entries from the rate limit store to free up memory.
-   * This method is called periodically by the cleanup timer.
-   * @private
+   * Clean up expired rate limit entries to prevent memory leaks
    */
   private cleanupExpiredEntries(): void {
     const now = Date.now();
     let expiredCount = 0;
-    const internalContext = requestContextService.createRequestContext({
-      operation: "RateLimiter.cleanupExpiredEntries",
-    });
 
+    // Use a synchronized approach to avoid race conditions during cleanup
     for (const [key, entry] of this.limits.entries()) {
       if (now >= entry.resetTime) {
         this.limits.delete(key);
@@ -138,133 +100,104 @@ export class RateLimiter {
     }
 
     if (expiredCount > 0) {
-      logger.debug(`Cleaned up ${expiredCount} expired rate limit entries.`, {
-        ...internalContext,
+      logger.debug(`Cleaned up ${expiredCount} expired rate limit entries`, {
         totalRemaining: this.limits.size,
       });
     }
   }
 
   /**
-   * Updates the rate limiter's configuration.
-   * @param {Partial<RateLimitConfig>} newConfig - Partial configuration object
-   *   with new settings to apply.
+   * Update rate limiter configuration
+   * @param config New configuration options
    */
-  public configure(newConfig: Partial<RateLimitConfig>): void {
-    const oldCleanupInterval = this.currentConfig.cleanupInterval;
-    this.currentConfig = { ...this.currentConfig, ...newConfig };
+  public configure(config: Partial<RateLimitConfig>): void {
+    this.config = { ...this.config, ...config };
 
-    if (
-      newConfig.cleanupInterval !== undefined &&
-      newConfig.cleanupInterval !== oldCleanupInterval
-    ) {
-      this.startCleanupTimer(); // Restart timer if interval changed
+    // Restart cleanup timer if interval changed
+    if (config.cleanupInterval !== undefined) {
+      this.startCleanupTimer();
     }
-    // Consider logging configuration changes if needed, using a RequestContext.
   }
 
   /**
-   * Retrieves a copy of the current rate limiter configuration.
-   * @returns {RateLimitConfig} The current configuration.
+   * Get current configuration
+   * @returns Current rate limit configuration
    */
   public getConfig(): RateLimitConfig {
-    return { ...this.currentConfig };
+    return { ...this.config };
   }
 
   /**
-   * Resets all rate limits, clearing all tracked keys and their counts.
-   * @param {RequestContext} [context] - Optional context for logging the reset operation.
+   * Reset all rate limits
    */
-  public reset(context?: RequestContext): void {
+  public reset(): void {
     this.limits.clear();
-    const opContext =
-      context ||
-      requestContextService.createRequestContext({
-        operation: "RateLimiter.reset",
-      });
-    logger.info("Rate limiter has been reset. All limits cleared.", opContext);
+    logger.debug("Rate limiter reset, all limits cleared");
   }
 
   /**
-   * Checks if a request identified by a key exceeds the configured rate limit.
-   * If the limit is exceeded, an `McpError` is thrown.
-   *
-   * @param {string} identifier - A unique string identifying the source of the request
-   *   (e.g., IP address, user ID, session ID).
-   * @param {RequestContext} [context] - Optional request context for logging and potentially
-   *   for use by a custom `keyGenerator`.
-   * @throws {McpError} If the rate limit is exceeded for the given key.
-   *   The error will have `BaseErrorCode.RATE_LIMITED`.
+   * Check if a request exceeds the rate limit
+   * @param key Unique identifier for the request source
+   * @param context Optional request context
+   * @throws {McpError} If rate limit is exceeded
    */
-  public check(identifier: string, context?: RequestContext): void {
-    const opContext =
-      context ||
-      requestContextService.createRequestContext({
-        operation: "RateLimiter.check",
-        identifier,
-      });
-
-    if (this.currentConfig.skipInDevelopment && environment === "development") {
-      logger.debug(
-        `Rate limiting skipped for key "${identifier}" in development environment.`,
-        opContext,
-      );
+  public check(key: string, context?: RequestContext): void {
+    // Skip in development if configured, using the validated environment from config
+    if (this.config.skipInDevelopment && environment === "development") {
       return;
     }
 
-    const limitKey = this.currentConfig.keyGenerator
-      ? this.currentConfig.keyGenerator(identifier, opContext)
-      : identifier;
+    // Generate key using custom generator if provided
+    const limitKey = this.config.keyGenerator
+      ? this.config.keyGenerator(key, context)
+      : key;
 
     const now = Date.now();
-    const entry = this.limits.get(limitKey);
 
-    if (!entry || now >= entry.resetTime) {
-      // New entry or expired window
-      this.limits.set(limitKey, {
-        count: 1,
-        resetTime: now + this.currentConfig.windowMs,
-      });
-      return; // First request in window, allow
-    }
+    // Accessing and updating the limit entry within a single function scope
+    // ensures atomicity in Node.js's single-threaded event loop for Map operations.
+    const limit = () => {
+      // Get current entry or create a new one if it doesn't exist or is expired
+      const entry = this.limits.get(limitKey);
 
-    // Window is active, check count
-    if (entry.count >= this.currentConfig.maxRequests) {
-      const waitTimeSeconds = Math.ceil((entry.resetTime - now) / 1000);
-      const errorMessageTemplate =
-        this.currentConfig.errorMessage ||
-        RateLimiter.DEFAULT_CONFIG.errorMessage!;
-      const errorMessage = errorMessageTemplate.replace(
-        "{waitTime}",
-        waitTimeSeconds.toString(),
-      );
+      // Create new entry or reset if expired
+      if (!entry || now >= entry.resetTime) {
+        const newEntry = {
+          count: 1,
+          resetTime: now + this.config.windowMs,
+        };
+        this.limits.set(limitKey, newEntry);
+        return newEntry;
+      }
 
-      logger.warning(`Rate limit exceeded for key "${limitKey}".`, {
-        ...opContext,
-        limitKey,
-        count: entry.count,
-        maxRequests: this.currentConfig.maxRequests,
-        resetTime: new Date(entry.resetTime).toISOString(),
-        waitTimeSeconds,
-      });
-      throw new McpError(
-        BaseErrorCode.RATE_LIMITED,
-        errorMessage,
-        { ...opContext, keyUsed: limitKey, waitTime: waitTimeSeconds }, // Pass opContext to McpError
-      );
-    }
+      // Check if limit exceeded
+      if (entry.count >= this.config.maxRequests) {
+        const waitTime = Math.ceil((entry.resetTime - now) / 1000);
+        const errorMessage =
+          this.config.errorMessage?.replace(
+            "{waitTime}",
+            waitTime.toString(),
+          ) || `Rate limit exceeded. Please try again in ${waitTime} seconds.`;
 
-    // Increment count and update entry
-    entry.count++;
-    // No need to this.limits.set(limitKey, entry) again if entry is a reference to the object in the map.
+        throw new McpError(BaseErrorCode.RATE_LIMITED, errorMessage, {
+          waitTime,
+          key: limitKey,
+        });
+      }
+
+      // Increment counter and return updated entry
+      entry.count++;
+      return entry;
+    };
+
+    // Execute the rate limiting logic
+    limit();
   }
 
   /**
-   * Retrieves the current rate limit status for a given key.
-   * @param {string} key - The rate limit key (as generated by `keyGenerator` or the raw identifier).
-   * @returns {{ current: number; limit: number; remaining: number; resetTime: number } | null}
-   *   An object with current status, or `null` if the key is not currently tracked (or has expired).
-   *   `resetTime` is a Unix timestamp (milliseconds).
+   * Get rate limit information for a key
+   * @param key The rate limit key
+   * @returns Current rate limit status or null if no record exists
    */
   public getStatus(key: string): {
     current: number;
@@ -273,65 +206,37 @@ export class RateLimiter {
     resetTime: number;
   } | null {
     const entry = this.limits.get(key);
-    if (!entry || Date.now() >= entry.resetTime) {
-      // Also consider expired as not found for status
+
+    if (!entry) {
       return null;
     }
+
     return {
       current: entry.count,
-      limit: this.currentConfig.maxRequests,
-      remaining: Math.max(0, this.currentConfig.maxRequests - entry.count),
+      limit: this.config.maxRequests,
+      remaining: Math.max(0, this.config.maxRequests - entry.count),
       resetTime: entry.resetTime,
     };
   }
 
   /**
-   * Stops the cleanup timer and clears all rate limit entries.
-   * This should be called if the rate limiter instance is no longer needed,
-   * to prevent resource leaks (though `unref` on the timer helps).
-   * @param {RequestContext} [context] - Optional context for logging the disposal.
+   * Stop the cleanup timer when the limiter is no longer needed
    */
-  public dispose(context?: RequestContext): void {
+  public dispose(): void {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
+
+    // Clear all entries
     this.limits.clear();
-    const opContext =
-      context ||
-      requestContextService.createRequestContext({
-        operation: "RateLimiter.dispose",
-      });
-    logger.info(
-      "Rate limiter disposed, cleanup timer stopped and limits cleared.",
-      opContext,
-    );
   }
 }
 
 /**
- * A default, shared instance of the `RateLimiter`.
- * This instance is configured with default settings (e.g., 100 requests per 15 minutes).
- * It can be reconfigured using `rateLimiter.configure()`.
- *
- * Example:
- * ```typescript
- * import { rateLimiter, RequestContext } from './rateLimiter';
- * import { requestContextService } from '../internal';
- *
- * const context: RequestContext = requestContextService.createRequestContext({ operation: 'MyApiCall' });
- * const userIp = '123.45.67.89';
- *
- * try {
- *   rateLimiter.check(userIp, context);
- *   // Proceed with operation
- * } catch (e) {
- *   if (e instanceof McpError && e.code === BaseErrorCode.RATE_LIMITED) {
- *     console.error("Rate limit hit:", e.message);
- *   } else {
- *     // Handle other errors
- *   }
- * }
- * ```
+ * Create and export a default rate limiter instance
  */
-export const rateLimiter = new RateLimiter({}); // Initialize with default or empty to use class defaults
+export const rateLimiter = new RateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 100, // 100 requests per window
+});

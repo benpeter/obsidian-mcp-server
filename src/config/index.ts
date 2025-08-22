@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Loads, validates, and exports application configuration.
+ * @module src/config/index
+ */
+
 import dotenv from "dotenv";
 import { existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import path, { dirname, join } from "path";
@@ -7,11 +12,6 @@ import { z } from "zod";
 dotenv.config();
 
 // --- Determine Project Root ---
-/**
- * Finds the project root directory by searching upwards for package.json.
- * @param startDir The directory to start searching from.
- * @returns The absolute path to the project root, or throws an error if not found.
- */
 const findProjectRoot = (startDir: string): string => {
   let currentDir = startDir;
   while (true) {
@@ -21,7 +21,6 @@ const findProjectRoot = (startDir: string): string => {
     }
     const parentDir = dirname(currentDir);
     if (parentDir === currentDir) {
-      // Reached the root of the filesystem without finding package.json
       throw new Error(
         `Could not find project root (package.json) starting from ${startDir}`,
       );
@@ -32,7 +31,6 @@ const findProjectRoot = (startDir: string): string => {
 
 let projectRoot: string;
 try {
-  // For ESM, __dirname is not available directly.
   const currentModuleDir = dirname(fileURLToPath(import.meta.url));
   projectRoot = findProjectRoot(currentModuleDir);
 } catch (error: any) {
@@ -52,16 +50,12 @@ try {
 } catch (error) {
   if (process.stderr.isTTY) {
     console.error(
-      "Warning: Could not read package.json for default config values. Using hardcoded defaults.",
+      "Warning: Could not read package.json for default config values.",
       error,
     );
   }
 }
 
-/**
- * Zod schema for validating environment variables.
- * @private
- */
 const EnvSchema = z.object({
   MCP_SERVER_NAME: z.string().optional(),
   MCP_SERVER_VERSION: z.string().optional(),
@@ -69,21 +63,32 @@ const EnvSchema = z.object({
   LOGS_DIR: z.string().default(path.join(projectRoot, "logs")),
   NODE_ENV: z.string().default("development"),
   MCP_TRANSPORT_TYPE: z.enum(["stdio", "http"]).default("stdio"),
-  MCP_HTTP_PORT: z.coerce.number().int().positive().default(3010),
+  MCP_SESSION_MODE: z.enum(["stateless", "stateful", "auto"]).default("auto"),
+  MCP_HTTP_PORT: z.coerce.number().int().positive().default(3016),
   MCP_HTTP_HOST: z.string().default("127.0.0.1"),
+  MCP_HTTP_ENDPOINT_PATH: z.string().default("/mcp"),
+  MCP_HTTP_MAX_PORT_RETRIES: z.coerce.number().int().nonnegative().default(15),
+  MCP_HTTP_PORT_RETRY_DELAY_MS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(50),
+  MCP_STATEFUL_SESSION_STALE_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(1_800_000),
   MCP_ALLOWED_ORIGINS: z.string().optional(),
-  MCP_AUTH_MODE: z.enum(["jwt", "oauth"]).optional(),
   MCP_AUTH_SECRET_KEY: z
     .string()
-    .min(
-      32,
-      "MCP_AUTH_SECRET_KEY must be at least 32 characters long for security",
-    )
+    .min(32, "MCP_AUTH_SECRET_KEY must be at least 32 characters long.")
     .optional(),
+  MCP_AUTH_MODE: z.enum(["jwt", "oauth", "none"]).default("none"),
   OAUTH_ISSUER_URL: z.string().url().optional(),
-  OAUTH_AUDIENCE: z.string().optional(),
   OAUTH_JWKS_URI: z.string().url().optional(),
-  // --- Obsidian Specific Config ---
+  OAUTH_AUDIENCE: z.string().optional(),
+  DEV_MCP_CLIENT_ID: z.string().optional(),
+  DEV_MCP_SCOPES: z.string().optional(),
   OBSIDIAN_API_KEY: z.string().min(1, "OBSIDIAN_API_KEY cannot be empty"),
   OBSIDIAN_BASE_URL: z.string().url().default("http://127.0.0.1:27123"),
   OBSIDIAN_VERIFY_SSL: z
@@ -109,18 +114,15 @@ const EnvSchema = z.object({
 const parsedEnv = EnvSchema.safeParse(process.env);
 
 if (!parsedEnv.success) {
-  const errorDetails = parsedEnv.error.flatten().fieldErrors;
-  if (process.stderr.isTTY) {
-    console.error("❌ Invalid environment variables:", errorDetails);
-  }
-  throw new Error(
-    `Invalid environment configuration. Please check your .env file or environment variables. Details: ${JSON.stringify(errorDetails)}`,
+  console.error(
+    "❌ Invalid environment variables:",
+    parsedEnv.error.flatten().fieldErrors,
   );
+  throw new Error("Invalid environment configuration.");
 }
 
 const env = parsedEnv.data;
 
-// --- Directory Ensurance Function ---
 const ensureDirectory = (
   dirPath: string,
   rootDir: string,
@@ -129,67 +131,34 @@ const ensureDirectory = (
   const resolvedDirPath = path.isAbsolute(dirPath)
     ? dirPath
     : path.resolve(rootDir, dirPath);
-
   if (
     !resolvedDirPath.startsWith(rootDir + path.sep) &&
     resolvedDirPath !== rootDir
   ) {
-    if (process.stderr.isTTY) {
-      console.error(
-        `Error: ${dirName} path "${dirPath}" resolves to "${resolvedDirPath}", which is outside the project boundary "${rootDir}".`,
-      );
-    }
+    console.error(`Error: ${dirName} path is outside the project boundary.`);
     return null;
   }
-
   if (!existsSync(resolvedDirPath)) {
     try {
       mkdirSync(resolvedDirPath, { recursive: true });
-    } catch (err: unknown) {
-      if (process.stderr.isTTY) {
-        console.error(
-          `Error creating ${dirName} directory at ${resolvedDirPath}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+    } catch (err: any) {
+      console.error(`Error creating ${dirName} directory: ${err.message}`);
       return null;
     }
-  } else {
-    try {
-      if (!statSync(resolvedDirPath).isDirectory()) {
-        if (process.stderr.isTTY) {
-          console.error(
-            `Error: ${dirName} path ${resolvedDirPath} exists but is not a directory.`,
-          );
-        }
-        return null;
-      }
-    } catch (statError: any) {
-      if (process.stderr.isTTY) {
-        console.error(
-          `Error accessing ${dirName} path ${resolvedDirPath}: ${statError.message}`,
-        );
-      }
-      return null;
-    }
+  } else if (!statSync(resolvedDirPath).isDirectory()) {
+    console.error(`Error: ${dirName} path exists but is not a directory.`);
+    return null;
   }
   return resolvedDirPath;
 };
-// --- End Directory Ensurance Function ---
 
 const validatedLogsPath = ensureDirectory(env.LOGS_DIR, projectRoot, "logs");
 
 if (!validatedLogsPath) {
-  if (process.stderr.isTTY) {
-    console.error(
-      "FATAL: Logs directory configuration is invalid or could not be created. Please check permissions and path. Exiting.",
-    );
-  }
+  console.error("FATAL: Logs directory is invalid. Exiting.");
   process.exit(1);
 }
 
-/**
- * Main application configuration object.
- */
 export const config = {
   pkg,
   mcpServerName: env.MCP_SERVER_NAME || pkg.name,
@@ -198,34 +167,31 @@ export const config = {
   logsPath: validatedLogsPath,
   environment: env.NODE_ENV,
   mcpTransportType: env.MCP_TRANSPORT_TYPE,
+  mcpSessionMode: env.MCP_SESSION_MODE,
   mcpHttpPort: env.MCP_HTTP_PORT,
   mcpHttpHost: env.MCP_HTTP_HOST,
-  mcpAllowedOrigins: env.MCP_ALLOWED_ORIGINS?.split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-  mcpAuthMode: env.MCP_AUTH_MODE,
+  mcpHttpEndpointPath: env.MCP_HTTP_ENDPOINT_PATH,
+  mcpHttpMaxPortRetries: env.MCP_HTTP_MAX_PORT_RETRIES,
+  mcpHttpPortRetryDelayMs: env.MCP_HTTP_PORT_RETRY_DELAY_MS,
+  mcpStatefulSessionStaleTimeoutMs: env.MCP_STATEFUL_SESSION_STALE_TIMEOUT_MS,
+  mcpAllowedOrigins: env.MCP_ALLOWED_ORIGINS?.split(",").map((o) => o.trim()),
   mcpAuthSecretKey: env.MCP_AUTH_SECRET_KEY,
+  mcpAuthMode: env.MCP_AUTH_MODE,
   oauthIssuerUrl: env.OAUTH_ISSUER_URL,
-  oauthAudience: env.OAUTH_AUDIENCE,
   oauthJwksUri: env.OAUTH_JWKS_URI,
+  oauthAudience: env.OAUTH_AUDIENCE,
+  devMcpClientId: env.DEV_MCP_CLIENT_ID,
+  devMcpScopes: env.DEV_MCP_SCOPES?.split(",").map((s) => s.trim()),
   obsidianApiKey: env.OBSIDIAN_API_KEY,
   obsidianBaseUrl: env.OBSIDIAN_BASE_URL,
   obsidianVerifySsl: env.OBSIDIAN_VERIFY_SSL,
   obsidianCacheRefreshIntervalMin: env.OBSIDIAN_CACHE_REFRESH_INTERVAL_MIN,
   obsidianEnableCache: env.OBSIDIAN_ENABLE_CACHE,
   obsidianApiSearchTimeoutMs: env.OBSIDIAN_API_SEARCH_TIMEOUT_MS,
+  security: {
+    authRequired: env.MCP_AUTH_MODE !== "none",
+  },
 };
 
-/**
- * The configured logging level for the application.
- * Exported separately for convenience (e.g., logger initialization).
- * @type {string}
- */
 export const logLevel = config.logLevel;
-
-/**
- * The configured runtime environment for the application.
- * Exported separately for convenience.
- * @type {string}
- */
 export const environment = config.environment;

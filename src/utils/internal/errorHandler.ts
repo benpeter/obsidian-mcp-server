@@ -1,144 +1,66 @@
-/**
- * @fileoverview This module provides utilities for robust error handling.
- * It defines structures for error context, options for handling errors,
- * and mappings for classifying errors. The main `ErrorHandler` class
- * offers static methods for consistent error processing, logging, and transformation.
- * @module src/utils/internal/errorHandler
- */
-import { BaseErrorCode, McpError } from "../../types-global/errors.js";
-import { generateUUID, sanitizeInputForLogging } from "../index.js"; // Import from main barrel file
+import { BaseErrorCode, McpError } from "../../types-global/errors.js"; // Corrected path
 import { logger } from "./logger.js";
-import { RequestContext } from "./requestContext.js"; // Import RequestContext
+import { sanitizeInputForLogging } from "../index.js"; // Import from main barrel file
 
 /**
- * Defines a generic structure for providing context with errors.
- * This context can include identifiers like `requestId` or any other relevant
- * key-value pairs that aid in debugging or understanding the error's circumstances.
+ * Generic error context interface
  */
 export interface ErrorContext {
-  /**
-   * A unique identifier for the request or operation during which the error occurred.
-   * Useful for tracing errors through logs and distributed systems.
-   */
+  /** Unique request or operation identifier */
   requestId?: string;
-
-  /**
-   * Allows for arbitrary additional context information.
-   * Keys are strings, and values can be of any type.
-   */
+  /** Any additional context information */
   [key: string]: unknown;
 }
 
 /**
- * Configuration options for the `ErrorHandler.handleError` method.
- * These options control how an error is processed, logged, and whether it's rethrown.
+ * Error handler options
  */
 export interface ErrorHandlerOptions {
-  /**
-   * The context of the operation that caused the error.
-   * This can include `requestId` and other relevant debugging information.
-   */
+  /** The context of the operation that caused the error */
   context?: ErrorContext;
-
-  /**
-   * A descriptive name of the operation being performed when the error occurred.
-   * This helps in identifying the source or nature of the error in logs.
-   * Example: "UserLogin", "ProcessPayment", "FetchUserProfile".
-   */
+  /** The name of the operation being performed */
   operation: string;
-
-  /**
-   * The input data or parameters that were being processed when the error occurred.
-   * This input will be sanitized before logging to prevent sensitive data exposure.
-   */
+  /** The input that caused the error */
   input?: unknown;
-
-  /**
-   * If true, the (potentially transformed) error will be rethrown after handling.
-   * Defaults to `false`.
-   */
+  /** Whether to rethrow the error after handling */
   rethrow?: boolean;
-
-  /**
-   * A specific `BaseErrorCode` to assign to the error, overriding any
-   * automatically determined error code.
-   */
+  /** Custom error code to use when creating an McpError */
   errorCode?: BaseErrorCode;
-
-  /**
-   * A custom function to map or transform the original error into a new `Error` instance.
-   * If provided, this function is used instead of the default `McpError` creation.
-   * @param error - The original error that occurred.
-   * @returns The transformed error.
-   */
+  /** Custom error mapper function */
   errorMapper?: (error: unknown) => Error;
-
-  /**
-   * If true, stack traces will be included in the logs.
-   * Defaults to `true`.
-   */
+  /** Whether to include stack traces in logs */
   includeStack?: boolean;
-
-  /**
-   * If true, indicates that the error is critical and might require immediate attention
-   * or could lead to system instability. This is primarily for logging and alerting.
-   * Defaults to `false`.
-   */
+  /** Whether this is a critical error that should abort operations */
   critical?: boolean;
 }
 
 /**
- * Defines a basic rule for mapping errors based on patterns.
- * Used internally by `COMMON_ERROR_PATTERNS` and as a base for `ErrorMapping`.
+ * Base error mapping rule
  */
 export interface BaseErrorMapping {
-  /**
-   * A string or regular expression to match against the error message.
-   * If a string is provided, it's typically used for substring matching (case-insensitive).
-   */
+  /** Pattern to match in the error message */
   pattern: string | RegExp;
-
-  /**
-   * The `BaseErrorCode` to assign if the pattern matches.
-   */
+  /** Error code for mapped errors */
   errorCode: BaseErrorCode;
-
-  /**
-   * An optional custom message template for the mapped error.
-   * (Note: This property is defined but not directly used by `ErrorHandler.determineErrorCode`
-   * which focuses on `errorCode`. It's more relevant for custom mapping logic.)
-   */
+  /** Custom error message template */
   messageTemplate?: string;
 }
 
 /**
- * Extends `BaseErrorMapping` to include a factory function for creating
- * specific error instances and additional context for the mapping.
- * Used by `ErrorHandler.mapError`.
- * @template T The type of `Error` this mapping will produce, defaults to `Error`.
+ * Error mapping configuration
  */
 export interface ErrorMapping<T extends Error = Error>
   extends BaseErrorMapping {
-  /**
-   * A factory function that creates and returns an instance of the mapped error type `T`.
-   * @param error - The original error that occurred.
-   * @param context - Optional additional context provided in the mapping rule.
-   * @returns The newly created error instance.
-   */
+  /** Factory function to create the mapped error */
   factory: (error: unknown, context?: Record<string, unknown>) => T;
-
-  /**
-   * Additional static context to be merged or passed to the `factory` function
-   * when this mapping rule is applied.
-   */
+  /** Additional context to merge with error context */
   additionalContext?: Record<string, unknown>;
 }
 
 /**
- * Maps standard JavaScript error constructor names to `BaseErrorCode` values.
- * @private
+ * Simple mapper that maps error types to error codes
  */
-const ERROR_TYPE_MAPPINGS: Readonly<Record<string, BaseErrorCode>> = {
+const ERROR_TYPE_MAPPINGS: Record<string, BaseErrorCode> = {
   SyntaxError: BaseErrorCode.VALIDATION_ERROR,
   TypeError: BaseErrorCode.VALIDATION_ERROR,
   ReferenceError: BaseErrorCode.INTERNAL_ERROR,
@@ -148,139 +70,105 @@ const ERROR_TYPE_MAPPINGS: Readonly<Record<string, BaseErrorCode>> = {
 };
 
 /**
- * Array of `BaseErrorMapping` rules to classify errors by message/name patterns.
- * Order matters: more specific patterns should precede generic ones.
- * @private
+ * Common error patterns for automatic classification
  */
-const COMMON_ERROR_PATTERNS: ReadonlyArray<Readonly<BaseErrorMapping>> = [
+const COMMON_ERROR_PATTERNS: BaseErrorMapping[] = [
+  // Authentication related errors
   {
     pattern:
       /auth|unauthorized|unauthenticated|not.*logged.*in|invalid.*token|expired.*token/i,
     errorCode: BaseErrorCode.UNAUTHORIZED,
   },
+  // Permission related errors
   {
     pattern: /permission|forbidden|access.*denied|not.*allowed/i,
     errorCode: BaseErrorCode.FORBIDDEN,
   },
+  // Not found errors
   {
-    pattern: /not found|missing|no such|doesn't exist|couldn't find/i,
+    pattern: /not.*found|missing|no.*such|doesn't.*exist|couldn't.*find/i,
     errorCode: BaseErrorCode.NOT_FOUND,
   },
+  // Validation errors
   {
-    pattern:
-      /invalid|validation|malformed|bad request|wrong format|missing required/i,
+    pattern: /invalid|validation|malformed|bad request|wrong format/i,
     errorCode: BaseErrorCode.VALIDATION_ERROR,
   },
+  // Conflict errors
   {
-    pattern: /conflict|already exists|duplicate|unique constraint/i,
+    pattern: /conflict|already.*exists|duplicate|unique.*constraint/i,
     errorCode: BaseErrorCode.CONFLICT,
   },
+  // Rate limiting
   {
-    pattern: /rate limit|too many requests|throttled/i,
+    pattern: /rate.*limit|too.*many.*requests|throttled/i,
     errorCode: BaseErrorCode.RATE_LIMITED,
   },
+  // Timeout errors
   {
-    pattern: /timeout|timed out|deadline exceeded/i,
+    pattern: /timeout|timed.*out|deadline.*exceeded/i,
     errorCode: BaseErrorCode.TIMEOUT,
   },
+  // External service errors
   {
-    pattern: /service unavailable|bad gateway|gateway timeout|upstream error/i,
+    pattern: /service.*unavailable|bad.*gateway|gateway.*timeout/i,
     errorCode: BaseErrorCode.SERVICE_UNAVAILABLE,
   },
 ];
 
 /**
- * Creates a "safe" RegExp for testing error messages.
- * Ensures case-insensitivity and removes the global flag.
- * @param pattern - The string or RegExp pattern.
- * @returns A new RegExp instance.
- * @private
- */
-function createSafeRegex(pattern: string | RegExp): RegExp {
-  if (pattern instanceof RegExp) {
-    let flags = pattern.flags.replace("g", "");
-    if (!flags.includes("i")) {
-      flags += "i";
-    }
-    return new RegExp(pattern.source, flags);
-  }
-  return new RegExp(pattern, "i");
-}
-
-/**
- * Retrieves a descriptive name for an error object or value.
- * @param error - The error object or value.
- * @returns A string representing the error's name or type.
- * @private
+ * Get a readable name for an error
+ * @param error Error to get name for
+ * @returns User-friendly error name
  */
 function getErrorName(error: unknown): string {
   if (error instanceof Error) {
     return error.name || "Error";
   }
+
   if (error === null) {
-    return "NullValueEncountered";
+    return "NullError";
   }
+
   if (error === undefined) {
-    return "UndefinedValueEncountered";
+    return "UndefinedError";
   }
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    error.constructor &&
-    typeof error.constructor.name === "string" &&
-    error.constructor.name !== "Object"
-  ) {
-    return `${error.constructor.name}Encountered`;
-  }
-  return `${typeof error}Encountered`;
+
+  return typeof error === "object" ? "ObjectError" : "UnknownError";
 }
 
 /**
- * Extracts a message string from an error object or value.
- * @param error - The error object or value.
- * @returns The error message string.
- * @private
+ * Get a message from an error
+ * @param error Error to get message from
+ * @returns Error message
  */
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
+
   if (error === null) {
-    return "Null value encountered as error";
+    return "Null error occurred";
   }
+
   if (error === undefined) {
-    return "Undefined value encountered as error";
+    return "Undefined error occurred";
   }
-  if (typeof error === "string") {
-    return error;
-  }
-  try {
-    const str = String(error);
-    if (str === "[object Object]" && error !== null) {
-      try {
-        return `Non-Error object encountered: ${JSON.stringify(error)}`;
-      } catch (stringifyError) {
-        return `Unstringifyable non-Error object encountered (constructor: ${error.constructor?.name || "Unknown"})`;
-      }
-    }
-    return str;
-  } catch (e) {
-    return `Error converting error to string: ${e instanceof Error ? e.message : "Unknown conversion error"}`;
-  }
+
+  return typeof error === "string" ? error : String(error);
 }
 
 /**
- * A utility class providing static methods for comprehensive error handling.
+ * Error handler utility class with various error handling methods
  */
 export class ErrorHandler {
   /**
-   * Determines an appropriate `BaseErrorCode` for a given error.
-   * Checks `McpError` instances, `ERROR_TYPE_MAPPINGS`, and `COMMON_ERROR_PATTERNS`.
-   * Defaults to `BaseErrorCode.INTERNAL_ERROR`.
-   * @param error - The error instance or value to classify.
-   * @returns The determined error code.
+   * Determine the appropriate error code for an error based on patterns and type
+   * @param error The error to classify
+   * @returns The appropriate error code
    */
   public static determineErrorCode(error: unknown): BaseErrorCode {
+    // If it's already an McpError, use its code
     if (error instanceof McpError) {
       return error.code;
     }
@@ -288,199 +176,181 @@ export class ErrorHandler {
     const errorName = getErrorName(error);
     const errorMessage = getErrorMessage(error);
 
-    if (errorName in ERROR_TYPE_MAPPINGS) {
-      return ERROR_TYPE_MAPPINGS[errorName as keyof typeof ERROR_TYPE_MAPPINGS];
+    // Check if the error type has a direct mapping
+    const mappedError =
+      ERROR_TYPE_MAPPINGS[errorName as keyof typeof ERROR_TYPE_MAPPINGS];
+    if (mappedError) {
+      return mappedError;
     }
 
-    for (const mapping of COMMON_ERROR_PATTERNS) {
-      const regex = createSafeRegex(mapping.pattern);
+    // Check for common error patterns
+    for (const pattern of COMMON_ERROR_PATTERNS) {
+      const regex =
+        pattern.pattern instanceof RegExp
+          ? pattern.pattern
+          : new RegExp(pattern.pattern, "i");
+
       if (regex.test(errorMessage) || regex.test(errorName)) {
-        return mapping.errorCode;
+        return pattern.errorCode;
       }
     }
+
+    // Default to internal error if no pattern matches
     return BaseErrorCode.INTERNAL_ERROR;
   }
 
   /**
-   * Handles an error with consistent logging and optional transformation.
-   * Sanitizes input, determines error code, logs details, and can rethrow.
-   * @param error - The error instance or value that occurred.
-   * @param options - Configuration for handling the error.
-   * @returns The handled (and potentially transformed) error instance.
+   * Handle operation errors with consistent logging and transformation
+   * @param error The error that occurred
+   * @param options Error handling options
+   * @returns The transformed error
    */
   public static handleError(
     error: unknown,
     options: ErrorHandlerOptions,
   ): Error {
     const {
-      context = {},
+      context,
       operation,
       input,
       rethrow = false,
       errorCode: explicitErrorCode,
       includeStack = true,
       critical = false,
-      errorMapper,
     } = options;
 
-    const sanitizedInput =
-      input !== undefined ? sanitizeInputForLogging(input) : undefined;
-    const originalErrorName = getErrorName(error);
-    const originalErrorMessage = getErrorMessage(error);
-    const originalStack = error instanceof Error ? error.stack : undefined;
-
-    let finalError: Error;
-    let loggedErrorCode: BaseErrorCode;
-
-    const errorDetailsSeed =
-      error instanceof McpError &&
-      typeof error.details === "object" &&
-      error.details !== null
-        ? { ...error.details }
-        : {};
-
-    const consolidatedDetails: Record<string, unknown> = {
-      ...errorDetailsSeed,
-      ...context, // Spread context here to allow its properties to be overridden by more specific error details if needed
-      originalErrorName,
-      originalMessage: originalErrorMessage,
-    };
-    if (
-      originalStack &&
-      !(error instanceof McpError && error.details?.originalStack) // Avoid duplicating if already in McpError details
-    ) {
-      consolidatedDetails.originalStack = originalStack;
-    }
-
+    // If it's already an McpError, use it directly but apply additional context
     if (error instanceof McpError) {
-      loggedErrorCode = error.code;
-      // If an errorMapper is provided, use it. Otherwise, reconstruct McpError with consolidated details.
-      finalError = errorMapper
-        ? errorMapper(error)
-        : new McpError(error.code, error.message, consolidatedDetails);
-    } else {
-      loggedErrorCode =
-        explicitErrorCode || ErrorHandler.determineErrorCode(error);
-      const message = `Error in ${operation}: ${originalErrorMessage}`;
-      finalError = errorMapper
-        ? errorMapper(error)
-        : new McpError(loggedErrorCode, message, consolidatedDetails);
-    }
+      const existingDetails =
+        typeof error.details === "object" && error.details !== null
+          ? error.details
+          : {};
+      const newDetails = { ...existingDetails, ...context };
 
-    // Preserve stack trace if the error was transformed but the new error doesn't have one
-    if (
-      finalError !== error && // if error was transformed
-      error instanceof Error && // original was an Error
-      finalError instanceof Error && // final is an Error
-      !finalError.stack && // final has no stack
-      error.stack // original had a stack
-    ) {
-      finalError.stack = error.stack;
-    }
+      // Create a new error to avoid mutating a readonly property
+      const updatedError = new McpError(error.code, error.message, newDetails);
 
-    const logRequestId =
-      typeof context.requestId === "string" && context.requestId
-        ? context.requestId
-        : generateUUID(); // Generate if not provided in context
+      // Log the error with sanitized input
+      logger.error(`Error in ${operation}: ${updatedError.message}`, {
+        errorCode: updatedError.code,
+        requestId: context?.requestId,
+        input: input ? sanitizeInputForLogging(input) : undefined,
+        stack: includeStack ? updatedError.stack : undefined,
+        critical,
+        ...context,
+      });
 
-    const logTimestamp =
-      typeof context.timestamp === "string" && context.timestamp
-        ? context.timestamp
-        : new Date().toISOString(); // Generate if not provided
-
-    // Prepare log payload, ensuring RequestContext properties are at the top level for logger
-    const logPayload: Record<string, unknown> = {
-      requestId: logRequestId,
-      timestamp: logTimestamp,
-      operation,
-      input: sanitizedInput,
-      critical,
-      errorCode: loggedErrorCode,
-      originalErrorType: originalErrorName, // Renamed from originalErrorName for clarity in logs
-      finalErrorType: getErrorName(finalError),
-      // Spread remaining context properties, excluding what's already explicitly set
-      ...Object.fromEntries(
-        Object.entries(context).filter(
-          ([key]) => key !== "requestId" && key !== "timestamp",
-        ),
-      ),
-    };
-
-    // Add detailed error information
-    if (finalError instanceof McpError && finalError.details) {
-      logPayload.errorDetails = finalError.details; // Already consolidated
-    } else {
-      // For non-McpErrors or McpErrors without details, use consolidatedDetails
-      logPayload.errorDetails = consolidatedDetails;
-    }
-
-    if (includeStack) {
-      const stack =
-        finalError instanceof Error ? finalError.stack : originalStack;
-      if (stack) {
-        logPayload.stack = stack;
+      if (rethrow) {
+        throw updatedError;
       }
+
+      // Ensure the function returns an Error type
+      return updatedError;
     }
 
-    // Log using the logger, casting logPayload to RequestContext for compatibility
-    // The logger's `error` method expects a RequestContext as its second or third argument.
-    logger.error(
-      `Error in ${operation}: ${finalError.message || originalErrorMessage}`,
-      finalError, // Pass the actual error object
-      logPayload as RequestContext, // Pass the structured log data as context
-    );
+    // Sanitize input for logging
+    const sanitizedInput = input ? sanitizeInputForLogging(input) : undefined;
 
+    // Log the error with consistent format
+    logger.error(`Error in ${operation}: ${getErrorMessage(error)}`, {
+      error: getErrorMessage(error), // Use helper function
+      errorType: getErrorName(error),
+      input: sanitizedInput,
+      requestId: context?.requestId,
+      stack: includeStack && error instanceof Error ? error.stack : undefined,
+      critical,
+      ...context,
+    });
+
+    // Choose the error code (explicit > determined > default)
+    const errorCode =
+      explicitErrorCode ||
+      ErrorHandler.determineErrorCode(error) ||
+      BaseErrorCode.INTERNAL_ERROR;
+
+    // Transform to appropriate error type
+    let transformedError: Error;
+    if (options.errorMapper) {
+      transformedError = options.errorMapper(error);
+    } else {
+      transformedError = new McpError(
+        errorCode,
+        `Error in ${operation}: ${getErrorMessage(error)}`, // Use helper function
+        {
+          originalError: getErrorName(error),
+          ...context,
+        },
+      );
+    }
+
+    // Rethrow if requested
     if (rethrow) {
-      throw finalError;
+      throw transformedError;
     }
-    return finalError;
+
+    // Ensure the function returns an Error type
+    return transformedError;
   }
 
   /**
-   * Maps an error to a specific error type `T` based on `ErrorMapping` rules.
-   * Returns original/default error if no mapping matches.
-   * @template T The target error type, extending `Error`.
-   * @param error - The error instance or value to map.
-   * @param mappings - An array of mapping rules to apply.
-   * @param defaultFactory - Optional factory for a default error if no mapping matches.
-   * @returns The mapped error of type `T`, or the original/defaulted error.
+   * Map an error to a specific error type based on error message patterns
+   * @param error The error to map
+   * @param mappings Array of pattern and factory mappings
+   * @param defaultFactory Default factory function if no pattern matches
+   * @returns The mapped error
    */
   public static mapError<T extends Error>(
     error: unknown,
-    mappings: ReadonlyArray<ErrorMapping<T>>,
+    mappings: ErrorMapping<T>[],
     defaultFactory?: (error: unknown, context?: Record<string, unknown>) => T,
   ): T | Error {
-    const errorMessage = getErrorMessage(error);
-    const errorName = getErrorName(error);
+    // If it's already the target type and we have a default factory to check against, return it
+    if (defaultFactory && error instanceof Error) {
+      const defaultInstance = defaultFactory(error);
+      if (error.constructor === defaultInstance.constructor) {
+        return error as T;
+      }
+    }
 
+    const errorMessage = getErrorMessage(error);
+
+    // Check each pattern and return the first match
     for (const mapping of mappings) {
-      const regex = createSafeRegex(mapping.pattern);
-      if (regex.test(errorMessage) || regex.test(errorName)) {
+      const matches =
+        mapping.pattern instanceof RegExp
+          ? mapping.pattern.test(errorMessage)
+          : errorMessage.includes(mapping.pattern);
+
+      if (matches) {
         return mapping.factory(error, mapping.additionalContext);
       }
     }
 
+    // Return default or original error
     if (defaultFactory) {
       return defaultFactory(error);
     }
-    // Ensure a proper Error object is returned
+
     return error instanceof Error ? error : new Error(String(error));
   }
 
+  // Removed createErrorMapper method for simplification
+
   /**
-   * Formats an error into a consistent object structure for API responses or structured logging.
-   * @param error - The error instance or value to format.
-   * @returns A structured representation of the error.
+   * Format an error for consistent response structure
+   * @param error The error to format
+   * @returns Formatted error object
    */
   public static formatError(error: unknown): Record<string, unknown> {
     if (error instanceof McpError) {
       return {
         code: error.code,
         message: error.message,
+        // Ensure details is an object
         details:
           typeof error.details === "object" && error.details !== null
-            ? error.details // Use existing details if they are an object
-            : {}, // Default to empty object if details are not suitable
+            ? error.details
+            : {},
       };
     }
 
@@ -488,51 +358,30 @@ export class ErrorHandler {
       return {
         code: ErrorHandler.determineErrorCode(error),
         message: error.message,
-        details: { errorType: error.name || "Error" }, // Ensure errorType is always present
+        details: { errorType: error.name },
       };
     }
 
-    // Handle non-Error types
     return {
       code: BaseErrorCode.UNKNOWN_ERROR,
-      message: getErrorMessage(error), // Use helper to get a string message
-      details: { errorType: getErrorName(error) }, // Use helper to get a type name
+      message: String(error),
+      details: { errorType: "string" },
     };
   }
 
   /**
-   * Safely executes a function (sync or async) and handles errors using `ErrorHandler.handleError`.
-   * The error is always rethrown by default by `handleError` when `rethrow` is true.
-   * @template T The expected return type of the function `fn`.
-   * @param fn - The function to execute.
-   * @param options - Error handling options (excluding `rethrow`, as it's forced to true).
-   * @returns A promise resolving with the result of `fn` if successful.
-   * @throws {McpError | Error} The error processed by `ErrorHandler.handleError`.
-   * @example
-   * ```typescript
-   * async function fetchData(userId: string, context: RequestContext) {
-   *   return ErrorHandler.tryCatch(
-   *     async () => {
-   *       const response = await fetch(`/api/users/${userId}`);
-   *       if (!response.ok) throw new Error(`Failed to fetch user: ${response.status}`);
-   *       return response.json();
-   *     },
-   *     { operation: 'fetchUserData', context, input: { userId } } // rethrow is implicitly true
-   *   );
-   * }
-   * ```
+   * Safely execute a function and handle any errors
+   * @param fn Function to execute
+   * @param options Error handling options
+   * @returns The result of the function or error
    */
   public static async tryCatch<T>(
     fn: () => Promise<T> | T,
-    options: Omit<ErrorHandlerOptions, "rethrow">, // Omit rethrow from options type
+    options: ErrorHandlerOptions,
   ): Promise<T> {
     try {
-      // Await the promise if fn returns one, otherwise resolve directly.
-      const result = fn();
-      return await Promise.resolve(result);
+      return await fn();
     } catch (error) {
-      // ErrorHandler.handleError will return the error to be thrown.
-      // rethrow is true by default when calling handleError this way.
       throw ErrorHandler.handleError(error, { ...options, rethrow: true });
     }
   }

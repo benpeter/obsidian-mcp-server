@@ -113,15 +113,18 @@ export async function countChatTokens(
             message.tool_calls
           ) {
             for (const tool_call of message.tool_calls) {
-              // Add tokens for the function name and arguments
-              if (tool_call.function.name) {
-                num_tokens += encoding.encode(tool_call.function.name).length;
-              }
-              if (tool_call.function.arguments) {
-                // Arguments are often JSON strings
-                num_tokens += encoding.encode(
-                  tool_call.function.arguments,
-                ).length;
+              // Check if the tool call is of type 'function' before accessing .function
+              if (tool_call.type === "function") {
+                // Add tokens for the function name and arguments
+                if (tool_call.function.name) {
+                  num_tokens += encoding.encode(tool_call.function.name).length;
+                }
+                if (tool_call.function.arguments) {
+                  // Arguments are often JSON strings
+                  num_tokens += encoding.encode(
+                    tool_call.function.arguments,
+                  ).length;
+                }
               }
             }
           }

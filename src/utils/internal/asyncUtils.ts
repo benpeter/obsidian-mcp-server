@@ -111,15 +111,19 @@ export async function retryWithDelay<T>(
         );
 
         if (error instanceof McpError) {
-          // If the last error was already an McpError, re-throw it but ensure its details are preserved/updated.
-          error.details = {
-            ...(typeof error.details === "object" && error.details !== null
-              ? error.details
-              : {}),
-            ...retryAttemptContext, // Add retry context to existing details
-            finalAttempt: true,
-          };
-          throw error;
+          // If the last error was already an McpError, wrap it in a new one to add context without mutation.
+          throw new McpError(
+            error.code,
+            `Operation '${operationName}' failed: ${error.message}`,
+            {
+              ...(typeof error.details === "object" && error.details !== null
+                ? error.details
+                : {}),
+              ...retryAttemptContext,
+              finalAttempt: true,
+              originalErrorName: error.name,
+            },
+          );
         }
         // For other errors, wrap in a new McpError
         throw new McpError(
