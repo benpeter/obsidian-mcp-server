@@ -1,9 +1,7 @@
-export {
-  ObsidianManageFrontmatterInputSchemaShape,
-  processObsidianManageFrontmatter,
-} from "./logic.js";
-export type {
-  ObsidianManageFrontmatterInput,
-  ObsidianManageFrontmatterResponse,
-} from "./logic.js";
-export { registerObsidianManageFrontmatterTool } from "./registration.js";
+/**
+ * @fileoverview Barrel file for the obsidian_manage_frontmatter tool.
+ * @module src/mcp-server/tools/obsidianManageFrontmatterTool/index
+ */
+
+export * from "./logic.js";
+export * from "./registration.js";

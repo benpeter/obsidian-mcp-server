@@ -1,28 +1,27 @@
+/**
+ * @fileoverview Core logic for the 'obsidian_manage_frontmatter' tool.
+ * @module src/mcp-server/tools/obsidianManageFrontmatterTool/logic
+ */
+
 import { z } from "zod";
-import { dump } from "js-yaml";
+import { components } from "../../../services/obsidianRestAPI/generated-types.js";
 import {
-  NoteJson,
   ObsidianRestApiService,
   PatchOptions,
-  VaultCacheService,
 } from "../../../services/obsidianRestAPI/index.js";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
-import {
-  logger,
-  RequestContext,
-  retryWithDelay,
-} from "../../../utils/index.js";
+import { resolveVaultPath } from "../../../services/obsidianRestAPI/utils/pathResolver.js";
+import { type RequestContext } from "../../../utils/index.js";
+import { JsonValueSchema } from "../schemas/jsonSchema.js";
 
-// ====================================================================================
-// Schema Definitions
-// ====================================================================================
+type NoteJson = components["schemas"]["NoteJson"];
 
-const ManageFrontmatterInputSchemaBase = z.object({
+// 1. DEFINE the Zod input schema.
+export const BaseObsidianManageFrontmatterInputSchema = z.object({
   filePath: z
     .string()
     .min(1)
     .describe(
-      "The vault-relative path to the target note (e.g., 'Projects/Active/My Note.md').",
+      "The vault-relative path to the target note (e.g., 'projects/active/my-note.md').",
     ),
   operation: z
     .enum(["get", "set", "delete"])
@@ -35,88 +34,65 @@ const ManageFrontmatterInputSchemaBase = z.object({
     .describe(
       "The name of the frontmatter key to target, such as 'status', 'tags', or 'aliases'.",
     ),
-  value: z
-    .any()
-    .optional()
-    .describe(
-      "The value to assign when using the 'set' operation. Can be a string, number, boolean, array, or a JSON object.",
-    ),
+  value: JsonValueSchema.optional().describe(
+    "The value to assign when using the 'set' operation. Can be a string, number, boolean, array, or a JSON object.",
+  ),
 });
 
-export const ObsidianManageFrontmatterInputSchemaShape =
-  ManageFrontmatterInputSchemaBase.shape;
-
-export const ManageFrontmatterInputSchema =
-  ManageFrontmatterInputSchemaBase.refine(
-    (data) => {
-      if (data.operation === "set" && data.value === undefined) {
-        return false;
-      }
-      return true;
-    },
+export const ObsidianManageFrontmatterInputSchema =
+  BaseObsidianManageFrontmatterInputSchema.refine(
+    (data) => !(data.operation === "set" && data.value === undefined),
     {
       message: "A 'value' is required when the 'operation' is 'set'.",
       path: ["value"],
     },
   );
 
+// 2. DEFINE the Zod response schema.
+export const ObsidianManageFrontmatterOutputSchema = z.object({
+  success: z.boolean(),
+  message: z.string(),
+  value: JsonValueSchema.optional(),
+});
+
+// 3. INFER and export TypeScript types.
 export type ObsidianManageFrontmatterInput = z.infer<
-  typeof ManageFrontmatterInputSchema
+  typeof ObsidianManageFrontmatterInputSchema
+>;
+export type ObsidianManageFrontmatterOutput = z.infer<
+  typeof ObsidianManageFrontmatterOutputSchema
 >;
 
-export interface ObsidianManageFrontmatterResponse {
-  success: boolean;
-  message: string;
-  value?: any;
-}
-
-// ====================================================================================
-// Core Logic Function
-// ====================================================================================
-
-export const processObsidianManageFrontmatter = async (
+/**
+ * Manages frontmatter for a specific Obsidian note.
+ * @throws {McpError} If the logic encounters an unrecoverable issue.
+ */
+export async function obsidianManageFrontmatterLogic(
   params: ObsidianManageFrontmatterInput,
   context: RequestContext,
   obsidianService: ObsidianRestApiService,
-  vaultCacheService: VaultCacheService | undefined,
-): Promise<ObsidianManageFrontmatterResponse> => {
-  logger.debug(`Processing obsidian_manage_frontmatter request`, {
-    ...context,
-    operation: params.operation,
-    filePath: params.filePath,
-    key: params.key,
-  });
-
+): Promise<ObsidianManageFrontmatterOutput> {
   const { filePath, operation, key, value } = params;
 
-  const shouldRetryNotFound = (err: unknown) =>
-    err instanceof McpError && err.code === BaseErrorCode.NOT_FOUND;
-
-  const getFileWithRetry = async (
-    opContext: RequestContext,
-    format: "json" | "markdown" = "json",
-  ): Promise<NoteJson | string> => {
-    return await retryWithDelay(
-      () => obsidianService.getFileContent(filePath, format, opContext),
-      {
-        operationName: `getFileContentForFrontmatter`,
-        context: opContext,
-        maxRetries: 3,
-        delayMs: 300,
-        shouldRetry: shouldRetryNotFound,
-      },
-    );
-  };
+  const effectiveFilePath = await resolveVaultPath(
+    filePath,
+    context,
+    (fp, ctx) => obsidianService.getFileMetadata(fp, ctx),
+    (dp, ctx) => obsidianService.listFiles(dp, ctx),
+  );
 
   switch (operation) {
     case "get": {
-      const note = (await getFileWithRetry(context)) as NoteJson;
-      const frontmatter = note.frontmatter ?? {};
-      const retrievedValue = frontmatter[key];
+      const note = (await obsidianService.getFileContent(
+        effectiveFilePath,
+        "json",
+        context,
+      )) as NoteJson;
+      const retrievedValue = note.frontmatter?.[key];
       return {
         success: true,
         message: `Successfully retrieved key '${key}' from frontmatter.`,
-        value: retrievedValue,
+        value: retrievedValue as z.infer<typeof JsonValueSchema>,
       };
     }
 
@@ -126,117 +102,50 @@ export const processObsidianManageFrontmatter = async (
         targetType: "frontmatter",
         target: key,
         createTargetIfMissing: true,
-        contentType:
-          typeof value === "object" ? "application/json" : "text/markdown",
+        contentType: "application/json",
       };
-      const content =
-        typeof value === "object" ? JSON.stringify(value) : String(value);
-
-      await retryWithDelay(
-        () =>
-          obsidianService.patchFile(filePath, content, patchOptions, context),
-        {
-          operationName: `patchFileForFrontmatterSet`,
-          context,
-          maxRetries: 3,
-          delayMs: 300,
-          shouldRetry: shouldRetryNotFound,
-        },
+      await obsidianService.patchFile(
+        effectiveFilePath,
+        JSON.stringify(value),
+        patchOptions,
+        context,
       );
-
-      if (vaultCacheService) {
-        await vaultCacheService.updateCacheForFile(filePath, context);
-      }
       return {
         success: true,
         message: `Successfully set key '${key}' in frontmatter.`,
-        value: { [key]: value },
+        value: value,
       };
     }
 
     case "delete": {
-      // Note on deletion strategy: The Obsidian REST API's PATCH endpoint for frontmatter
-      // supports adding/updating keys but does not have a dedicated "delete key" operation.
-      // Therefore, deletion is handled by reading the note content, parsing the frontmatter,
-      // removing the key from the JavaScript object, and then overwriting the entire note
-      // with the updated frontmatter block. This regex-based replacement is a workaround
-      // for the current API limitations.
-      const noteJson = (await getFileWithRetry(context, "json")) as NoteJson;
-      const frontmatter = noteJson.frontmatter;
-
-      if (!frontmatter || frontmatter[key] === undefined) {
-        return {
-          success: true,
-          message: `Key '${key}' not found in frontmatter. No action taken.`,
-          value: {},
-        };
-      }
-
-      delete frontmatter[key];
-
-      const noteContent = (await getFileWithRetry(
+      const note = (await obsidianService.getFileContent(
+        effectiveFilePath,
+        "json",
         context,
-        "markdown",
-      )) as string;
-
-      const frontmatterRegex = /^---\n([\s\S]*?)\n---\n/;
-      const match = noteContent.match(frontmatterRegex);
-
-      let newContent;
-      const newFrontmatterString =
-        Object.keys(frontmatter).length > 0 ? dump(frontmatter) : "";
-
-      if (match) {
-        // Frontmatter exists, replace it
-        if (newFrontmatterString) {
-          newContent = noteContent.replace(
-            frontmatterRegex,
-            `---\n${newFrontmatterString}---\n`,
-          );
-        } else {
-          // If frontmatter is now empty, remove the block entirely
-          newContent = noteContent.replace(frontmatterRegex, "");
-        }
-      } else {
-        // This case should be rare given the initial check, but handle it defensively
-        logger.warning(
-          "Frontmatter key existed in JSON but block not found in markdown. No action taken.",
+      )) as NoteJson;
+      const frontmatter = note.frontmatter || {};
+      if (key in frontmatter) {
+        const patchOptions: PatchOptions = {
+          operation: "replace",
+          targetType: "frontmatter",
+          target: key,
+          contentType: "application/json",
+        };
+        await obsidianService.patchFile(
+          effectiveFilePath,
+          JSON.stringify(null),
+          patchOptions,
           context,
         );
         return {
-          success: false,
-          message: `Could not find frontmatter block to update, though key '${key}' was detected.`,
-          value: {},
+          success: true,
+          message: `Successfully deleted key '${key}' from frontmatter.`,
         };
       }
-
-      await retryWithDelay(
-        () => obsidianService.updateFileContent(filePath, newContent, context),
-        {
-          operationName: `updateFileForFrontmatterDelete`,
-          context,
-          maxRetries: 3,
-          delayMs: 300,
-          shouldRetry: shouldRetryNotFound,
-        },
-      );
-
-      if (vaultCacheService) {
-        await vaultCacheService.updateCacheForFile(filePath, context);
-      }
-
       return {
         success: true,
-        message: `Successfully deleted key '${key}' from frontmatter.`,
-        value: {},
+        message: `Key '${key}' not found in frontmatter; no action taken.`,
       };
     }
-
-    default:
-      throw new McpError(
-        BaseErrorCode.VALIDATION_ERROR,
-        `Invalid operation: ${operation}`,
-        context,
-      );
   }
-};
+}

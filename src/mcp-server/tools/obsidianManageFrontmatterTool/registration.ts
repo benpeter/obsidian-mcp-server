@@ -1,119 +1,97 @@
+/**
+ * @fileoverview Registers the 'obsidian_manage_frontmatter' tool with the MCP server.
+ * @module src/mcp-server/tools/obsidianManageFrontmatterTool/registration
+ */
+
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  ObsidianRestApiService,
-  VaultCacheService,
-} from "../../../services/obsidianRestAPI/index.js";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
+import { ObsidianRestApiService } from "../../../services/obsidianRestAPI/index.js";
+import { McpError } from "../../../types-global/errors.js";
 import {
   ErrorHandler,
   logger,
-  RequestContext,
   requestContextService,
 } from "../../../utils/index.js";
-import type {
-  ObsidianManageFrontmatterInput,
-  ObsidianManageFrontmatterResponse,
-} from "./logic.js";
 import {
-  ManageFrontmatterInputSchema,
-  ObsidianManageFrontmatterInputSchemaShape,
-  processObsidianManageFrontmatter,
+  obsidianManageFrontmatterLogic,
+  ObsidianManageFrontmatterInput,
+  ObsidianManageFrontmatterInputSchema,
+  ObsidianManageFrontmatterOutputSchema,
+  BaseObsidianManageFrontmatterInputSchema,
 } from "./logic.js";
 
+const TOOL_NAME = "obsidian_manage_frontmatter";
+const TOOL_DESCRIPTION =
+  "Atomically manages a note's YAML frontmatter. Supports getting, setting (creating/updating), and deleting specific keys. Ideal for efficient metadata operations.";
+
+/**
+ * Registers the 'obsidian_manage_frontmatter' tool with the MCP server.
+ * @param server The MCP server instance.
+ * @param obsidianService An instance of the ObsidianRestApiService.
+ */
 export const registerObsidianManageFrontmatterTool = async (
   server: McpServer,
   obsidianService: ObsidianRestApiService,
-  vaultCacheService: VaultCacheService | undefined,
 ): Promise<void> => {
-  const toolName = "obsidian_manage_frontmatter";
-  const toolDescription =
-    "Atomically manages a note's YAML frontmatter. Supports getting, setting (creating/updating), and deleting specific keys without rewriting the entire file. Ideal for efficient metadata operations on primitive or structured Obsidian frontmatter data.";
-
-  const registrationContext: RequestContext =
-    requestContextService.createRequestContext({
-      operation: "RegisterObsidianManageFrontmatterTool",
-      toolName: toolName,
-      module: "ObsidianManageFrontmatterRegistration",
-    });
-
-  logger.info(`Attempting to register tool: ${toolName}`, registrationContext);
-
-  await ErrorHandler.tryCatch(
-    async () => {
-      server.tool(
-        toolName,
-        toolDescription,
-        ObsidianManageFrontmatterInputSchemaShape,
-        async (params: ObsidianManageFrontmatterInput) => {
-          const handlerContext: RequestContext =
-            requestContextService.createRequestContext({
-              parentContext: registrationContext,
-              operation: "HandleObsidianManageFrontmatterRequest",
-              toolName: toolName,
-              params: params,
-            });
-          logger.debug(`Handling '${toolName}' request`, handlerContext);
-
-          return await ErrorHandler.tryCatch(
-            async () => {
-              const validatedParams =
-                ManageFrontmatterInputSchema.parse(params);
-
-              const response: ObsidianManageFrontmatterResponse =
-                await processObsidianManageFrontmatter(
-                  validatedParams,
-                  handlerContext,
-                  obsidianService,
-                  vaultCacheService,
-                );
-              logger.debug(
-                `'${toolName}' processed successfully`,
-                handlerContext,
-              );
-
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: JSON.stringify(response, null, 2),
-                  },
-                ],
-                isError: false,
-              };
-            },
-            {
-              operation: `processing ${toolName} handler`,
-              context: handlerContext,
-              input: params,
-              errorMapper: (error: unknown) =>
-                new McpError(
-                  error instanceof McpError
-                    ? error.code
-                    : BaseErrorCode.INTERNAL_ERROR,
-                  `Error processing ${toolName} tool: ${error instanceof Error ? error.message : "Unknown error"}`,
-                  { ...handlerContext },
-                ),
-            },
-          );
-        },
-      );
-
-      logger.info(
-        `Tool registered successfully: ${toolName}`,
-        registrationContext,
-      );
-    },
+  server.registerTool(
+    TOOL_NAME,
     {
-      operation: `registering tool ${toolName}`,
-      context: registrationContext,
-      errorCode: BaseErrorCode.INTERNAL_ERROR,
-      errorMapper: (error: unknown) =>
-        new McpError(
-          error instanceof McpError ? error.code : BaseErrorCode.INTERNAL_ERROR,
-          `Failed to register tool '${toolName}': ${error instanceof Error ? error.message : "Unknown error"}`,
-          { ...registrationContext },
-        ),
-      critical: true,
+      title: "Manage Obsidian Frontmatter",
+      description: TOOL_DESCRIPTION,
+      inputSchema: BaseObsidianManageFrontmatterInputSchema.shape,
+      outputSchema: ObsidianManageFrontmatterOutputSchema.shape,
+      annotations: {
+        readOnlyHint: false,
+      },
+    },
+    async (
+      params: ObsidianManageFrontmatterInput,
+      callContext: Record<string, unknown>,
+    ) => {
+      const handlerContext = requestContextService.createRequestContext({
+        toolName: TOOL_NAME,
+        parentContext: callContext,
+      });
+
+      try {
+        const validatedParams =
+          ObsidianManageFrontmatterInputSchema.parse(params);
+        const result = await obsidianManageFrontmatterLogic(
+          validatedParams,
+          handlerContext,
+          obsidianService,
+        );
+
+        return {
+          structuredContent: result,
+          content: [
+            {
+              type: "text",
+              text: result.message,
+            },
+          ],
+        };
+      } catch (error) {
+        logger.error(`Error in ${TOOL_NAME} handler`, {
+          error,
+          ...handlerContext,
+        });
+        const mcpError = ErrorHandler.handleError(error, {
+          operation: `tool:${TOOL_NAME}`,
+          context: handlerContext,
+          input: params,
+        }) as McpError;
+
+        return {
+          isError: true,
+          content: [{ type: "text", text: mcpError.message }],
+          structuredContent: {
+            code: mcpError.code,
+            message: mcpError.message,
+            details: mcpError.details,
+          },
+        };
+      }
     },
   );
+  logger.info(`Tool '${TOOL_NAME}' registered successfully.`);
 };
