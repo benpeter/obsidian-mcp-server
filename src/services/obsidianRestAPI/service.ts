@@ -5,42 +5,55 @@
  * It encapsulates the logic for making authenticated requests to the API endpoints.
  */
 
-import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from "axios";
-import https from "node:https"; // Import the https module for Agent configuration
+import createClient from "openapi-fetch";
 import { config } from "../../config/index.js";
 import { BaseErrorCode, McpError } from "../../types-global/errors.js";
 import {
-  ErrorHandler,
   logger,
   RequestContext,
   requestContextService,
-} from "../../utils/index.js"; // Added requestContextService
-import * as activeFileMethods from "./methods/activeFileMethods.js";
-import * as commandMethods from "./methods/commandMethods.js";
-import * as openMethods from "./methods/openMethods.js";
-import * as patchMethods from "./methods/patchMethods.js";
-import * as periodicNoteMethods from "./methods/periodicNoteMethods.js";
-import * as searchMethods from "./methods/searchMethods.js";
-import * as vaultMethods from "./methods/vaultMethods.js";
+} from "../../utils/index.js";
+import { components, paths } from "./generated-types.js";
+import { VaultCacheService } from "./vaultCache/index.js";
 import {
-  ApiStatusResponse, // Import PatchOptions type
-  ComplexSearchResult,
-  NoteJson,
-  NoteStat,
-  ObsidianCommand,
-  PatchOptions,
-  Period,
-  SimpleSearchResult,
-} from "./types.js"; // Import types from the new file
+  FetchError,
+  handleApiError,
+  encodeVaultPath,
+  encodeDirectoryPath,
+} from "./utils/index.js";
+
+// Define a type for our client for easier use
+export type ObsidianApiClient = ReturnType<typeof createClient<paths>>;
+type NoteJson = components["schemas"]["NoteJson"];
+type NoteStat = components["schemas"]["NoteJson"]["stat"];
+type ObsidianCommand = NonNullable<
+  paths["/commands/"]["get"]["responses"]["200"]["content"]["application/json"]["commands"]
+>[number];
+type Period =
+  paths["/periodic/{period}/"]["get"]["parameters"]["path"]["period"];
+type SimpleSearchResult =
+  paths["/search/simple/"]["post"]["responses"]["200"]["content"]["application/json"];
+type ComplexSearchResult =
+  paths["/search/"]["post"]["responses"]["200"]["content"]["application/json"];
+
+type PatchHeaders = paths["/vault/{filename}"]["patch"]["parameters"]["header"];
+
+export interface PatchOptions {
+  operation: "append" | "prepend" | "replace";
+  targetType: "heading" | "block" | "frontmatter";
+  target: string;
+  targetDelimiter?: string;
+  trimTargetWhitespace?: boolean;
+  createTargetIfMissing?: boolean;
+  contentType?: "text/markdown" | "application/json";
+}
 
 export class ObsidianRestApiService {
-  private axiosInstance: AxiosInstance;
-  private apiKey: string;
+  private apiClient: ObsidianApiClient;
+  private vaultCacheService: VaultCacheService | null = null;
 
   constructor() {
-    this.apiKey = config.obsidianApiKey; // Get from central config
-    if (!this.apiKey) {
-      // Config validation should prevent this, but double-check
+    if (!config.obsidianApiKey) {
       throw new McpError(
         BaseErrorCode.CONFIGURATION_ERROR,
         "Obsidian API Key is missing in configuration.",
@@ -48,573 +61,622 @@ export class ObsidianRestApiService {
       );
     }
 
-    const httpsAgent = new https.Agent({
-      rejectUnauthorized: config.obsidianVerifySsl,
-    });
-
-    this.axiosInstance = axios.create({
-      baseURL: config.obsidianBaseUrl.replace(/\/$/, ""), // Remove trailing slash
+    this.apiClient = createClient<paths>({
+      baseUrl: config.obsidianBaseUrl.replace(/\/$/, ""),
       headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        Accept: "application/json", // Default accept type
+        Authorization: `Bearer ${config.obsidianApiKey}`,
       },
-      timeout: 60000, // Increased timeout to 60 seconds (was 15000)
-      httpsAgent,
     });
 
     logger.info(
-      `ObsidianRestApiService initialized with base URL: ${this.axiosInstance.defaults.baseURL}, Verify SSL: ${config.obsidianVerifySsl}`,
+      `ObsidianRestApiService initialized with base URL: ${config.obsidianBaseUrl}`,
       requestContextService.createRequestContext({
         operation: "ObsidianServiceInit",
+        verifySsl: config.obsidianVerifySsl,
       }),
     );
   }
 
-  /**
-   * Private helper to make requests and handle common errors.
-   * @param config - Axios request configuration.
-   * @param context - Request context for logging.
-   * @param operationName - Name of the operation for logging context.
-   * @returns The response data.
-   * @throws {McpError} If the request fails.
-   */
-  private async _request<T = any>(
-    requestConfig: AxiosRequestConfig,
-    context: RequestContext,
-    operationName: string,
-  ): Promise<T> {
-    const operationContext = {
-      ...context,
-      operation: `ObsidianAPI_${operationName}`,
-    };
-    logger.debug(
-      `Making Obsidian API request: ${requestConfig.method} ${requestConfig.url}`,
-      operationContext,
-    );
-
-    return await ErrorHandler.tryCatch(
-      async () => {
-        try {
-          const response = await this.axiosInstance.request<T>(requestConfig);
-          logger.debug(
-            `Obsidian API request successful: ${requestConfig.method} ${requestConfig.url}`,
-            { ...operationContext, status: response.status },
-          );
-          // For HEAD requests, we need the headers, so return the whole response.
-          // For other requests, returning response.data is fine.
-          if (requestConfig.method === "HEAD") {
-            return response as T;
-          }
-          return response.data;
-        } catch (error) {
-          const axiosError = error as AxiosError;
-          let errorCode = BaseErrorCode.INTERNAL_ERROR;
-          let errorMessage = `Obsidian API request failed: ${axiosError.message}`;
-          const errorDetails: Record<string, any> = {
-            requestUrl: requestConfig.url,
-            requestMethod: requestConfig.method,
-            responseStatus: axiosError.response?.status,
-            responseData: axiosError.response?.data,
-          };
-
-          if (axiosError.response) {
-            // Handle specific HTTP status codes
-            switch (axiosError.response.status) {
-              case 400:
-                errorCode = BaseErrorCode.VALIDATION_ERROR;
-                errorMessage = `Obsidian API Bad Request: ${JSON.stringify(axiosError.response.data)}`;
-                break;
-              case 401:
-                errorCode = BaseErrorCode.UNAUTHORIZED;
-                errorMessage = "Obsidian API Unauthorized: Invalid API Key.";
-                break;
-              case 403:
-                errorCode = BaseErrorCode.FORBIDDEN;
-                errorMessage = "Obsidian API Forbidden: Check permissions.";
-                break;
-              case 404:
-                errorCode = BaseErrorCode.NOT_FOUND;
-                errorMessage = `Obsidian API Not Found: ${requestConfig.url}`;
-                // Log 404s at debug level, as they might be expected (e.g., checking existence)
-                logger.debug(errorMessage, {
-                  ...operationContext,
-                  ...errorDetails,
-                });
-                throw new McpError(errorCode, errorMessage, operationContext);
-              // NOTE: We throw immediately after logging debug for 404, skipping the general error log below.
-              case 405:
-                errorCode = BaseErrorCode.VALIDATION_ERROR; // Method not allowed often implies incorrect usage
-                errorMessage = `Obsidian API Method Not Allowed: ${requestConfig.method} on ${requestConfig.url}`;
-                break;
-              case 503:
-                errorCode = BaseErrorCode.SERVICE_UNAVAILABLE;
-                errorMessage = "Obsidian API Service Unavailable.";
-                break;
-            }
-            // General error logging for non-404 client/server errors handled above
-            logger.error(errorMessage, {
-              ...operationContext,
-              ...errorDetails,
-            });
-            throw new McpError(errorCode, errorMessage, operationContext);
-          } else if (axiosError.request) {
-            // Network error (no response received)
-            errorCode = BaseErrorCode.SERVICE_UNAVAILABLE;
-            errorMessage = `Obsidian API Network Error: No response received from ${requestConfig.url}. This may be due to Obsidian not running, the Local REST API plugin being disabled, or a network issue.`;
-            logger.error(errorMessage, {
-              ...operationContext,
-              ...errorDetails,
-            });
-            throw new McpError(errorCode, errorMessage, operationContext);
-          } else {
-            // Other errors (e.g., setup issues)
-            // Pass error object correctly if it's an Error instance
-            logger.error(
-              errorMessage,
-              error instanceof Error ? error : undefined,
-              {
-                ...operationContext,
-                ...errorDetails,
-                originalError: String(error),
-              },
-            );
-            throw new McpError(errorCode, errorMessage, operationContext);
-          }
-        }
-      },
-      {
-        operation: `ObsidianAPI_${operationName}_Wrapper`,
-        context: context,
-        input: requestConfig, // Log request config (sanitized by ErrorHandler)
-        errorCode: BaseErrorCode.INTERNAL_ERROR, // Default if wrapper itself fails
-      },
-    );
+  public setVaultCacheService(service: VaultCacheService) {
+    this.vaultCacheService = service;
   }
 
-  // --- API Methods ---
+  private async _performWriteOperation(
+    filePath: string | null | undefined,
+    context: RequestContext,
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    await operation();
+    if (this.vaultCacheService && filePath) {
+      this.vaultCacheService
+        .updateCacheForFile(filePath, context)
+        .catch((err) => {
+          logger.error(`Background cache update failed for ${filePath}`, {
+            ...context,
+            error: err,
+          });
+        });
+    }
+  }
 
-  /**
-   * Checks the status and authentication of the Obsidian Local REST API.
-   * @param context - The request context for logging and correlation.
-   * @returns {Promise<ApiStatusResponse>} - The status object from the API.
-   */
-  async checkStatus(context: RequestContext): Promise<ApiStatusResponse> {
-    // Note: This is the only endpoint that doesn't strictly require auth,
-    // but sending the key helps check if it's valid.
-    // This one is simple enough to keep inline or could be extracted too.
-    return this._request<ApiStatusResponse>(
-      {
-        method: "GET",
-        url: "/",
-      },
-      context,
-      "checkStatus",
-    );
+  private _buildPatchHeaders(options: PatchOptions): PatchHeaders {
+    const headers: PatchHeaders = {
+      Operation: options.operation,
+      "Target-Type": options.targetType,
+      Target: encodeURIComponent(options.target),
+    };
+    if (options.targetDelimiter) {
+      headers["Target-Delimiter"] = options.targetDelimiter;
+    }
+    if (options.trimTargetWhitespace !== undefined) {
+      headers["Trim-Target-Whitespace"] = String(
+        options.trimTargetWhitespace,
+      ) as "true" | "false";
+    }
+    if (options.createTargetIfMissing !== undefined) {
+      headers["Create-Target-If-Missing"] = String(
+        options.createTargetIfMissing,
+      ) as "true" | "false";
+    }
+    if (options.contentType) {
+      headers["Content-Type"] = options.contentType;
+    } else {
+      headers["Content-Type"] = "text/markdown";
+    }
+
+    return headers;
+  }
+
+  // --- Status Method ---
+  async checkStatus(context: RequestContext) {
+    const { data, error } = await this.apiClient.GET(`/`, {});
+    if (error) {
+      logger.error(`Failed to check Obsidian API status`, {
+        ...context,
+        error,
+      });
+      throw handleApiError(error as FetchError, context, "checkStatus");
+    }
+    return data;
   }
 
   // --- Vault Methods ---
 
-  /**
-   * Gets the content of a specific file in the vault.
-   * @param filePath - Vault-relative path to the file.
-   * @param format - 'markdown' or 'json' (for NoteJson).
-   * @param context - Request context.
-   * @returns The file content (string) or NoteJson object.
-   */
   async getFileContent(
     filePath: string,
     format: "markdown" | "json" = "markdown",
     context: RequestContext,
   ): Promise<string | NoteJson> {
-    return vaultMethods.getFileContent(
-      this._request.bind(this),
-      filePath,
-      format,
-      context,
-    );
+    const acceptHeader =
+      format === "json" ? "application/vnd.olrapi.note+json" : "text/markdown";
+    const encodedFilename = encodeVaultPath(filePath);
+
+    const { data, error } = await this.apiClient.GET(`/vault/{filename}`, {
+      params: {
+        path: { filename: encodedFilename },
+      },
+      headers: {
+        Accept: acceptHeader,
+      },
+    });
+
+    if (error) {
+      logger.error(`Failed to get file content for ${filePath}`, {
+        ...context,
+        error,
+      });
+      throw handleApiError(error as FetchError, context, "getFileContent");
+    }
+    return data as string | NoteJson;
   }
 
-  /**
-   * Updates (overwrites) the content of a file or creates it if it doesn't exist.
-   * @param filePath - Vault-relative path to the file.
-   * @param content - The new content for the file.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async updateFileContent(
     filePath: string,
     content: string,
     context: RequestContext,
   ): Promise<void> {
-    return vaultMethods.updateFileContent(
-      this._request.bind(this),
-      filePath,
-      content,
-      context,
-    );
+    await this._performWriteOperation(filePath, context, async () => {
+      const encodedFilename = encodeVaultPath(filePath);
+      const { error } = await this.apiClient.PUT(`/vault/{filename}`, {
+        params: {
+          path: { filename: encodedFilename },
+        },
+        headers: {
+          "Content-Type": "text/markdown",
+        },
+        body: content,
+      });
+
+      if (error) {
+        logger.error(`Failed to update file content for ${filePath}`, {
+          ...context,
+          error,
+        });
+        throw handleApiError(error as FetchError, context, "updateFileContent");
+      }
+    });
   }
 
-  /**
-   * Appends content to the end of a file. Creates the file if it doesn't exist.
-   * @param filePath - Vault-relative path to the file.
-   * @param content - The content to append.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async appendFileContent(
     filePath: string,
     content: string,
     context: RequestContext,
   ): Promise<void> {
-    return vaultMethods.appendFileContent(
-      this._request.bind(this),
-      filePath,
-      content,
-      context,
-    );
+    await this._performWriteOperation(filePath, context, async () => {
+      const encodedFilename = encodeVaultPath(filePath);
+      const { error } = await this.apiClient.POST(`/vault/{filename}`, {
+        params: {
+          path: { filename: encodedFilename },
+        },
+        headers: {
+          "Content-Type": "text/markdown",
+        },
+        body: content,
+      });
+
+      if (error) {
+        logger.error(`Failed to append file content for ${filePath}`, {
+          ...context,
+          error,
+        });
+        throw handleApiError(error as FetchError, context, "appendFileContent");
+      }
+    });
   }
 
-  /**
-   * Deletes a specific file in the vault.
-   * @param filePath - Vault-relative path to the file.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async deleteFile(filePath: string, context: RequestContext): Promise<void> {
-    return vaultMethods.deleteFile(this._request.bind(this), filePath, context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const encodedFilename = encodeVaultPath(filePath);
+      const { error } = await this.apiClient.DELETE(`/vault/{filename}`, {
+        params: {
+          path: { filename: encodedFilename },
+        },
+      });
+
+      if (error) {
+        logger.error(`Failed to delete file ${filePath}`, {
+          ...context,
+          error,
+        });
+        throw handleApiError(error as FetchError, context, "deleteFile");
+      }
+    });
   }
 
-  /**
-   * Lists files within a specified directory in the vault.
-   * @param dirPath - Vault-relative path to the directory. Use empty string "" or "/" for the root.
-   * @param context - Request context.
-   * @returns A list of file and directory names.
-   */
   async listFiles(dirPath: string, context: RequestContext): Promise<string[]> {
-    return vaultMethods.listFiles(this._request.bind(this), dirPath, context);
+    type FileListResponse =
+      paths["/vault/"]["get"]["responses"]["200"]["content"]["application/json"];
+    const encodedPath = encodeDirectoryPath(dirPath);
+
+    const { data, error } = encodedPath
+      ? await this.apiClient.GET(`/vault/{pathToDirectory}/`, {
+          params: {
+            path: { pathToDirectory: encodedPath },
+          },
+        })
+      : await this.apiClient.GET(`/vault/`, {});
+
+    if (error) {
+      logger.error(`Failed to list files in ${dirPath}`, { ...context, error });
+      throw handleApiError(error as FetchError, context, "listFiles");
+    }
+    return (data as FileListResponse).files ?? [];
   }
 
-  /**
-   * Gets the metadata (stat) of a specific file using a lightweight HEAD request.
-   * @param filePath - Vault-relative path to the file.
-   * @param context - Request context.
-   * @returns The file's metadata.
-   */
   async getFileMetadata(
     filePath: string,
     context: RequestContext,
   ): Promise<NoteStat | null> {
-    return vaultMethods.getFileMetadata(
-      this._request.bind(this),
-      filePath,
-      context,
-    );
+    const encodedFilename = encodeVaultPath(filePath);
+    const { error, response } = await this.apiClient.HEAD(`/vault/{filename}`, {
+      params: {
+        path: { filename: encodedFilename },
+      },
+    });
+
+    if (error) {
+      if (response.status !== 404) {
+        logger.error(`Failed to get file metadata for ${filePath}`, {
+          ...context,
+          error,
+        });
+      }
+      return null;
+    }
+
+    if (response.ok && response.headers) {
+      const headers = response.headers;
+      return {
+        mtime: headers.get("x-obsidian-mtime")
+          ? parseFloat(headers.get("x-obsidian-mtime")!) * 1000
+          : 0,
+        ctime: headers.get("x-obsidian-ctime")
+          ? parseFloat(headers.get("x-obsidian-ctime")!) * 1000
+          : 0,
+        size: headers.get("content-length")
+          ? parseInt(headers.get("content-length")!, 10)
+          : 0,
+      };
+    }
+    return null;
   }
 
   // --- Search Methods ---
 
-  /**
-   * Performs a simple text search across the vault.
-   * @param query - The text query string.
-   * @param contextLength - Number of characters surrounding each match (default 100).
-   * @param context - Request context.
-   * @returns An array of search results.
-   */
   async searchSimple(
     query: string,
     contextLength: number = 100,
     context: RequestContext,
-  ): Promise<SimpleSearchResult[]> {
-    return searchMethods.searchSimple(
-      this._request.bind(this),
-      query,
-      contextLength,
-      context,
-    );
+  ): Promise<SimpleSearchResult> {
+    const { data, error } = await this.apiClient.POST(`/search/simple/`, {
+      params: {
+        query: { query, contextLength },
+      },
+    });
+
+    if (error) {
+      logger.error(`Failed to perform simple search for "${query}"`, {
+        ...context,
+        error,
+      });
+      throw handleApiError(error as FetchError, context, "searchSimple");
+    }
+    return data;
   }
 
-  /**
-   * Performs a complex search using Dataview DQL or JsonLogic.
-   * @param query - The query string (DQL) or JSON object (JsonLogic).
-   * @param contentType - The content type header indicating the query format.
-   * @param context - Request context.
-   * @returns An array of search results.
-   */
   async searchComplex(
     query: string | object,
     contentType:
       | "application/vnd.olrapi.dataview.dql+txt"
       | "application/vnd.olrapi.jsonlogic+json",
     context: RequestContext,
-  ): Promise<ComplexSearchResult[]> {
-    return searchMethods.searchComplex(
-      this._request.bind(this),
-      query,
-      contentType,
-      context,
-    );
+  ): Promise<ComplexSearchResult> {
+    const { data, error } = await this.apiClient.POST(`/search/`, {
+      headers: { "Content-Type": contentType },
+      body: query as any,
+    });
+
+    if (error) {
+      logger.error(`Failed to perform complex search`, { ...context, error });
+      throw handleApiError(error as FetchError, context, "searchComplex");
+    }
+    return data;
   }
 
   // --- Command Methods ---
 
-  /**
-   * Executes a registered Obsidian command by its ID.
-   * @param commandId - The ID of the command (e.g., "app:go-back").
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async executeCommand(
     commandId: string,
     context: RequestContext,
   ): Promise<void> {
-    return commandMethods.executeCommand(
-      this._request.bind(this),
-      commandId,
-      context,
-    );
+    const { error } = await this.apiClient.POST(`/commands/{commandId}/`, {
+      params: {
+        path: { commandId },
+      },
+    });
+
+    if (error) {
+      logger.error(`Failed to execute command ${commandId}`, {
+        ...context,
+        error,
+      });
+      throw handleApiError(error as FetchError, context, "executeCommand");
+    }
   }
 
-  /**
-   * Lists all available Obsidian commands.
-   * @param context - Request context.
-   * @returns A list of available commands.
-   */
   async listCommands(context: RequestContext): Promise<ObsidianCommand[]> {
-    return commandMethods.listCommands(this._request.bind(this), context);
+    const { data, error } = await this.apiClient.GET(`/commands/`, {});
+
+    if (error) {
+      logger.error(`Failed to list commands`, { ...context, error });
+      throw handleApiError(error as FetchError, context, "listCommands");
+    }
+    return data.commands ?? [];
   }
 
   // --- Open Methods ---
 
-  /**
-   * Opens a specific file in Obsidian. Creates the file if it doesn't exist.
-   * @param filePath - Vault-relative path to the file.
-   * @param newLeaf - Whether to open the file in a new editor tab (leaf).
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (200 OK, but no body expected).
-   */
   async openFile(
     filePath: string,
     newLeaf: boolean = false,
     context: RequestContext,
   ): Promise<void> {
-    return openMethods.openFile(
-      this._request.bind(this),
-      filePath,
-      newLeaf,
-      context,
-    );
+    const { error } = await this.apiClient.POST(`/open/{filename}`, {
+      params: {
+        path: { filename: filePath },
+        query: { newLeaf },
+      },
+    });
+
+    if (error) {
+      logger.error(`Failed to open file ${filePath}`, { ...context, error });
+      throw handleApiError(error, context, "openFile");
+    }
   }
 
   // --- Active File Methods ---
 
-  /**
-   * Gets the content of the currently active file in Obsidian.
-   * @param format - 'markdown' or 'json' (for NoteJson).
-   * @param context - Request context.
-   * @returns The file content (string) or NoteJson object.
-   */
   async getActiveFile(
     format: "markdown" | "json" = "markdown",
     context: RequestContext,
   ): Promise<string | NoteJson> {
-    return activeFileMethods.getActiveFile(
-      this._request.bind(this),
-      format,
-      context,
-    );
+    const acceptHeader =
+      format === "json" ? "application/vnd.olrapi.note+json" : "text/markdown";
+    const { data, error } = await this.apiClient.GET(`/active/`, {
+      headers: {
+        Accept: acceptHeader,
+      },
+    });
+
+    if (error) {
+      logger.error(`Failed to get active file`, { ...context, error });
+      throw handleApiError(error, context, "getActiveFile");
+    }
+    return data as string | NoteJson;
   }
 
-  /**
-   * Updates (overwrites) the content of the currently active file.
-   * @param content - The new content.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
+  async getActiveFilePath(context: RequestContext): Promise<string | null> {
+    const note = await this.getActiveFile("json", context);
+    if (typeof note === "object" && note.path) {
+      return note.path;
+    }
+    return null;
+  }
+
   async updateActiveFile(
     content: string,
     context: RequestContext,
   ): Promise<void> {
-    return activeFileMethods.updateActiveFile(
-      this._request.bind(this),
-      content,
-      context,
-    );
+    const filePath = await this.getActiveFilePath(context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const { error } = await this.apiClient.PUT(`/active/`, {
+        headers: {
+          "Content-Type": "text/markdown",
+        },
+        body: content,
+      });
+
+      if (error) {
+        logger.error(`Failed to update active file`, { ...context, error });
+        throw handleApiError(error as FetchError, context, "updateActiveFile");
+      }
+    });
   }
 
-  /**
-   * Appends content to the end of the currently active file.
-   * @param content - The content to append.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async appendActiveFile(
     content: string,
     context: RequestContext,
   ): Promise<void> {
-    return activeFileMethods.appendActiveFile(
-      this._request.bind(this),
-      content,
-      context,
-    );
+    const filePath = await this.getActiveFilePath(context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const { error } = await this.apiClient.POST(`/active/`, {
+        headers: {
+          "Content-Type": "text/markdown",
+        },
+        body: content,
+      });
+
+      if (error) {
+        logger.error(`Failed to append to active file`, { ...context, error });
+        throw handleApiError(error as FetchError, context, "appendActiveFile");
+      }
+    });
   }
 
-  /**
-   * Deletes the currently active file.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async deleteActiveFile(context: RequestContext): Promise<void> {
-    return activeFileMethods.deleteActiveFile(
-      this._request.bind(this),
-      context,
-    );
+    const filePath = await this.getActiveFilePath(context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const { error } = await this.apiClient.DELETE(`/active/`, {});
+
+      if (error) {
+        logger.error(`Failed to delete active file`, { ...context, error });
+        throw handleApiError(error as FetchError, context, "deleteActiveFile");
+      }
+    });
   }
 
   // --- Periodic Notes Methods ---
-  // PATCH methods for periodic notes are complex and omitted for brevity
 
-  /**
-   * Gets the content of a periodic note (daily, weekly, etc.).
-   * @param period - The period type ('daily', 'weekly', 'monthly', 'quarterly', 'yearly').
-   * @param format - 'markdown' or 'json'.
-   * @param context - Request context.
-   * @returns The note content or NoteJson.
-   */
   async getPeriodicNote(
     period: Period,
     format: "markdown" | "json" = "markdown",
     context: RequestContext,
   ): Promise<string | NoteJson> {
-    return periodicNoteMethods.getPeriodicNote(
-      this._request.bind(this),
-      period,
-      format,
-      context,
-    );
+    const acceptHeader =
+      format === "json" ? "application/vnd.olrapi.note+json" : "text/markdown";
+    const { data, error } = await this.apiClient.GET(`/periodic/{period}/`, {
+      params: {
+        path: { period },
+      },
+      headers: { Accept: acceptHeader },
+    });
+
+    if (error) {
+      logger.error(`Failed to get periodic note for period ${period}`, {
+        ...context,
+        error,
+      });
+      throw handleApiError(error as FetchError, context, "getPeriodicNote");
+    }
+    return data as string | NoteJson;
   }
 
-  /**
-   * Updates (overwrites) the content of a periodic note. Creates if needed.
-   * @param period - The period type.
-   * @param content - The new content.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
+  async getPeriodicNotePath(
+    period: Period,
+    context: RequestContext,
+  ): Promise<string | null> {
+    const note = await this.getPeriodicNote(period, "json", context);
+    if (typeof note === "object" && note.path) {
+      return note.path;
+    }
+    return null;
+  }
+
   async updatePeriodicNote(
     period: Period,
     content: string,
     context: RequestContext,
   ): Promise<void> {
-    return periodicNoteMethods.updatePeriodicNote(
-      this._request.bind(this),
-      period,
-      content,
-      context,
-    );
+    const filePath = await this.getPeriodicNotePath(period, context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const { error } = await this.apiClient.PUT(`/periodic/{period}/`, {
+        params: {
+          path: { period },
+        },
+        headers: { "Content-Type": "text/markdown" },
+        body: content,
+      });
+
+      if (error) {
+        logger.error(`Failed to update periodic note for period ${period}`, {
+          ...context,
+          error,
+        });
+        throw handleApiError(
+          error as FetchError,
+          context,
+          "updatePeriodicNote",
+        );
+      }
+    });
   }
 
-  /**
-   * Appends content to a periodic note. Creates if needed.
-   * @param period - The period type.
-   * @param content - The content to append.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async appendPeriodicNote(
     period: Period,
     content: string,
     context: RequestContext,
   ): Promise<void> {
-    return periodicNoteMethods.appendPeriodicNote(
-      this._request.bind(this),
-      period,
-      content,
-      context,
-    );
+    const filePath = await this.getPeriodicNotePath(period, context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const { error } = await this.apiClient.POST(`/periodic/{period}/`, {
+        params: {
+          path: { period },
+        },
+        headers: { "Content-Type": "text/markdown" },
+        body: content,
+      });
+
+      if (error) {
+        logger.error(`Failed to append to periodic note for period ${period}`, {
+          ...context,
+          error,
+        });
+        throw handleApiError(
+          error as FetchError,
+          context,
+          "appendPeriodicNote",
+        );
+      }
+    });
   }
 
-  /**
-   * Deletes a periodic note.
-   * @param period - The period type.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (204 No Content).
-   */
   async deletePeriodicNote(
     period: Period,
     context: RequestContext,
   ): Promise<void> {
-    return periodicNoteMethods.deletePeriodicNote(
-      this._request.bind(this),
-      period,
-      context,
-    );
+    const filePath = await this.getPeriodicNotePath(period, context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const { error } = await this.apiClient.DELETE(`/periodic/{period}/`, {
+        params: {
+          path: { period },
+        },
+      });
+
+      if (error) {
+        logger.error(`Failed to delete periodic note for period ${period}`, {
+          ...context,
+          error,
+        });
+        throw handleApiError(
+          error as FetchError,
+          context,
+          "deletePeriodicNote",
+        );
+      }
+    });
   }
 
   // --- Patch Methods ---
 
-  /**
-   * Patches a specific file in the vault using granular controls.
-   * @param filePath - Vault-relative path to the file.
-   * @param content - The content to insert/replace (string or JSON for tables/frontmatter).
-   * @param options - Patch operation details (operation, targetType, target, etc.).
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (200 OK).
-   */
   async patchFile(
     filePath: string,
     content: string | object,
     options: PatchOptions,
     context: RequestContext,
   ): Promise<void> {
-    return patchMethods.patchFile(
-      this._request.bind(this),
-      filePath,
-      content,
-      options,
-      context,
-    );
+    await this._performWriteOperation(filePath, context, async () => {
+      const headers = this._buildPatchHeaders(options);
+      const requestData =
+        typeof content === "object" ? JSON.stringify(content) : content;
+      const encodedFilename = encodeVaultPath(filePath);
+
+      const { error } = await this.apiClient.PATCH(`/vault/{filename}`, {
+        params: {
+          path: { filename: encodedFilename },
+          header: headers,
+        },
+        body: requestData,
+      });
+
+      if (error) {
+        logger.error(`Failed to patch file ${filePath}`, { ...context, error });
+        throw handleApiError(error as FetchError, context, "patchFile");
+      }
+    });
   }
 
-  /**
-   * Patches the currently active file in Obsidian using granular controls.
-   * @param content - The content to insert/replace.
-   * @param options - Patch operation details.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (200 OK).
-   */
   async patchActiveFile(
     content: string | object,
     options: PatchOptions,
     context: RequestContext,
   ): Promise<void> {
-    return patchMethods.patchActiveFile(
-      this._request.bind(this),
-      content,
-      options,
-      context,
-    );
+    const filePath = await this.getActiveFilePath(context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const headers = this._buildPatchHeaders(options);
+      const requestData =
+        typeof content === "object" ? JSON.stringify(content) : content;
+
+      const { error } = await this.apiClient.PATCH(`/active/`, {
+        params: {
+          header: headers,
+        },
+        body: requestData,
+      });
+
+      if (error) {
+        logger.error(`Failed to patch active file`, { ...context, error });
+        throw handleApiError(error as FetchError, context, "patchActiveFile");
+      }
+    });
   }
 
-  /**
-   * Patches a periodic note using granular controls.
-   * @param period - The period type ('daily', 'weekly', etc.).
-   * @param content - The content to insert/replace.
-   * @param options - Patch operation details.
-   * @param context - Request context.
-   * @returns {Promise<void>} Resolves on success (200 OK).
-   */
   async patchPeriodicNote(
     period: Period,
     content: string | object,
     options: PatchOptions,
     context: RequestContext,
   ): Promise<void> {
-    return patchMethods.patchPeriodicNote(
-      this._request.bind(this),
-      period,
-      content,
-      options,
-      context,
-    );
+    const filePath = await this.getPeriodicNotePath(period, context);
+    await this._performWriteOperation(filePath, context, async () => {
+      const headers = this._buildPatchHeaders(options);
+      const requestData =
+        typeof content === "object" ? JSON.stringify(content) : content;
+
+      const { error } = await this.apiClient.PATCH(`/periodic/{period}/`, {
+        params: {
+          path: { period },
+          header: headers,
+        },
+        body: requestData,
+      });
+
+      if (error) {
+        logger.error(`Failed to patch periodic note for period ${period}`, {
+          ...context,
+          error,
+        });
+        throw handleApiError(error as FetchError, context, "patchPeriodicNote");
+      }
+    });
   }
 }

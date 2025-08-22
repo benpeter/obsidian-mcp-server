@@ -12,7 +12,9 @@ import {
   requestContextService,
   retryWithDelay,
 } from "../../../utils/index.js";
-import { NoteJson, ObsidianRestApiService } from "../index.js";
+import { ObsidianApi, ObsidianRestApiService } from "../index.js";
+
+type NoteJson = ObsidianApi["schemas"]["NoteJson"];
 
 interface CacheEntry {
   content: string;
@@ -267,45 +269,68 @@ export class VaultCacheService {
             context,
           );
 
-          if (!fileMetadata) {
-            logger.warning(
-              `Skipping file during cache refresh due to missing or invalid metadata: ${filePath}`,
-              { ...context, filePath },
-            );
-            continue;
-          }
-
-          const remoteMtime = fileMetadata.mtime;
           const cachedEntry = this.vaultContentCache.get(filePath);
 
-          if (!cachedEntry || cachedEntry.mtime < remoteMtime) {
+          // Determine if an update is needed.
+          // An update is needed if:
+          // 1. The file is not in the cache.
+          // 2. The file has valid metadata and is newer than the cached version.
+          // 3. The file has NO valid metadata (in which case we can't compare mtime, so we fetch to be safe).
+          const shouldUpdate =
+            !cachedEntry ||
+            (fileMetadata && cachedEntry.mtime < fileMetadata.mtime) ||
+            !fileMetadata;
+
+          if (shouldUpdate) {
+            if (!fileMetadata) {
+              logger.warning(
+                `File has missing or invalid metadata, attempting to fetch content directly to recover: ${filePath}`,
+                { ...context, filePath },
+              );
+            }
+
             const noteJson = (await this.obsidianService.getFileContent(
               filePath,
               "json",
               context,
             )) as NoteJson;
-            this.vaultContentCache.set(filePath, {
-              content: noteJson.content,
-              mtime: noteJson.stat.mtime,
-            });
 
-            if (!cachedEntry) {
-              filesAdded++;
-              logger.debug(`Added new file to cache: ${filePath}`, {
-                ...context,
-                filePath,
+            // After fetching, we must validate the response before caching.
+            if (
+              noteJson &&
+              typeof noteJson.content === "string" &&
+              noteJson.stat?.mtime
+            ) {
+              this.vaultContentCache.set(filePath, {
+                content: noteJson.content,
+                mtime: noteJson.stat.mtime,
               });
+
+              if (!cachedEntry) {
+                filesAdded++;
+                logger.debug(`Added new file to cache: ${filePath}`, {
+                  ...context,
+                  filePath,
+                });
+              } else {
+                filesUpdated++;
+                logger.debug(`Updated modified file in cache: ${filePath}`, {
+                  ...context,
+                  filePath,
+                });
+              }
             } else {
-              filesUpdated++;
-              logger.debug(`Updated modified file in cache: ${filePath}`, {
-                ...context,
-                filePath,
-              });
+              logger.warning(
+                `Skipping file during cache refresh because fetched content was invalid: ${filePath}`,
+                { ...context, filePath },
+              );
             }
           }
         } catch (error) {
           logger.error(
-            `Failed to process file during cache refresh: ${filePath}. Skipping. Error: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to process file during cache refresh: ${filePath}. Skipping. Error: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
             { ...context, filePath },
           );
         }
@@ -385,23 +410,23 @@ export class VaultCacheService {
     } catch (error) {
       const errMsg = `Failed to list directory during cache build scan: ${normalizedPath}`;
       const err = error as McpError | Error; // Type assertion
+
+      // For any listing error (not found, permissions, etc.), just log it and skip the directory.
+      // This makes the cache build resilient to vault inconsistencies.
       if (err instanceof McpError && err.code === BaseErrorCode.NOT_FOUND) {
-        logger.warning(`${errMsg} - Directory not found, skipping.`, opContext);
-        return [];
-      }
-      // Log and re-throw critical listing errors
-      if (err instanceof Error) {
-        logger.error(errMsg, err, opContext);
+        logger.debug(`${errMsg} - Directory not found, skipping.`, opContext);
+      } else if (err instanceof Error) {
+        logger.error(
+          `${errMsg}. Skipping. Error: ${err.message}`,
+          err,
+          opContext,
+        );
       } else {
-        logger.error(errMsg, opContext);
+        logger.error(`${errMsg}. Skipping.`, opContext);
       }
-      const errorCode =
-        err instanceof McpError ? err.code : BaseErrorCode.INTERNAL_ERROR;
-      throw new McpError(
-        errorCode,
-        `${errMsg}: ${err instanceof Error ? err.message : String(err)}`,
-        opContext,
-      );
+
+      // Return an empty array to allow the cache build to continue with other directories.
+      return [];
     }
   }
 }

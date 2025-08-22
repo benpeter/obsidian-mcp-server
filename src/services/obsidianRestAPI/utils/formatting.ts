@@ -1,30 +1,15 @@
 /**
- * @fileoverview Utilities for formatting Obsidian stat objects,
- * including timestamps and calculating estimated token counts.
- * @module src/utils/obsidian/obsidianStatUtils
+ * @fileoverview Utilities for formatting stats and timestamps.
+ * @module src/services/obsidianRestAPI/utils/formatting
  */
 
 import { format } from "date-fns";
-import { BaseErrorCode, McpError } from "../../types-global/errors.js";
-import { logger, RequestContext } from "../internal/index.js";
-import { countTokens } from "../metrics/index.js";
+import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
+import { logger, RequestContext } from "../../../utils/internal/index.js";
+import { countTokens } from "../../../utils/metrics/index.js";
 
-/**
- * Default format string for timestamps, providing a human-readable date and time.
- * Example output: "08:40:00 PM | 05-02-2025"
- */
 const DEFAULT_TIMESTAMP_FORMAT = "hh:mm:ss a | MM-dd-yyyy";
 
-/**
- * Formats a Unix timestamp (in milliseconds since the epoch) into a human-readable string.
- *
- * @param {number | undefined | null} timestampMs - The Unix timestamp in milliseconds.
- * @param {RequestContext} context - The request context for logging and error reporting.
- * @param {string} [formatString=DEFAULT_TIMESTAMP_FORMAT] - Optional format string adhering to `date-fns` tokens.
- *   Defaults to 'hh:mm:ss a | MM-dd-yyyy'.
- * @returns {string} The formatted timestamp string.
- * @throws {McpError} If the provided `timestampMs` is invalid (e.g., undefined, null, not a finite number, or results in an invalid Date object).
- */
 export function formatTimestamp(
   timestampMs: number | undefined | null,
   context: RequestContext,
@@ -69,37 +54,17 @@ export function formatTimestamp(
   }
 }
 
-/**
- * Represents the structure of an Obsidian API Stat object.
- */
 export interface ObsidianStat {
-  /** Creation time as a Unix timestamp (milliseconds). */
   ctime: number;
-  /** Modification time as a Unix timestamp (milliseconds). */
   mtime: number;
-  /** File size in bytes. */
   size: number;
 }
 
-/**
- * Represents formatted timestamp information derived from an Obsidian Stat object.
- */
 export interface FormattedTimestamps {
-  /** Human-readable creation time string. */
   createdTime: string;
-  /** Human-readable modification time string. */
   modifiedTime: string;
 }
 
-/**
- * Formats the `ctime` (creation time) and `mtime` (modification time) from an
- * Obsidian API Stat object into human-readable strings.
- *
- * @param {ObsidianStat | undefined | null} stat - The Stat object from the Obsidian API.
- *   If undefined or null, placeholder strings ('N/A') are returned.
- * @param {RequestContext} context - The request context for logging and error reporting.
- * @returns {FormattedTimestamps} An object containing `createdTime` and `modifiedTime` strings.
- */
 export function formatStatTimestamps(
   stat: ObsidianStat | undefined | null,
   context: RequestContext,
@@ -121,13 +86,11 @@ export function formatStatTimestamps(
       modifiedTime: formatTimestamp(stat.mtime, context),
     };
   } catch (error) {
-    // Log the error from formatTimestamp if it occurs during this higher-level operation
     logger.error(
       `Error formatting timestamps within formatStatTimestamps for ctime: ${stat.ctime}, mtime: ${stat.mtime}`,
       error instanceof Error ? error : undefined,
       { ...context, operation },
     );
-    // Return N/A as a fallback if formatting fails at this stage
     return {
       createdTime: "N/A",
       modifiedTime: "N/A",
@@ -135,27 +98,10 @@ export function formatStatTimestamps(
   }
 }
 
-/**
- * Represents a fully formatted stat object, including human-readable timestamps
- * and an estimated token count for the file content.
- */
 export interface FormattedStatWithTokenCount extends FormattedTimestamps {
-  /** Estimated number of tokens in the file content. -1 if counting failed or content was empty. */
   tokenCountEstimate: number;
 }
 
-/**
- * Creates a formatted stat object that includes human-readable timestamps
- * (creation and modification times) and an estimated token count for the provided file content.
- *
- * @param {ObsidianStat | null | undefined} stat - The original Stat object from the Obsidian API.
- *   If null or undefined, the function will return the input value (null or undefined).
- * @param {string} content - The file content string from which to calculate the token count.
- * @param {RequestContext} context - The request context for logging and error reporting.
- * @returns {Promise<FormattedStatWithTokenCount | null | undefined>} A promise resolving to an object
- *   containing `createdTime`, `modifiedTime`, and `tokenCountEstimate`. Returns `null` or `undefined`
- *   if the input `stat` object was `null` or `undefined`, respectively.
- */
 export async function createFormattedStatWithTokenCount(
   stat: ObsidianStat | null | undefined,
   content: string,
@@ -167,11 +113,11 @@ export async function createFormattedStatWithTokenCount(
       ...context,
       operation,
     });
-    return stat; // Return original null/undefined
+    return stat;
   }
 
   const formattedTimestamps = formatStatTimestamps(stat, context);
-  let tokenCountEstimate = -1; // Default: indicates error or empty content
+  let tokenCountEstimate = -1;
 
   if (content && content.trim().length > 0) {
     try {
@@ -188,7 +134,6 @@ export async function createFormattedStatWithTokenCount(
               : String(tokenError),
         },
       );
-      // tokenCountEstimate remains -1
     }
   } else {
     logger.debug(
