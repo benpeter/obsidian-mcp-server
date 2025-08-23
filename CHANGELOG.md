@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2025-08-23
+
+### Changed
+
+- **VaultCacheService Overhaul**:
+  - **Hybrid Cache Architecture**: Re-architected the `VaultCacheService` to use a hybrid model. It now maintains a complete in-memory index of all note metadata (stats, tags, frontmatter) while using a true LRU cache (`lru-cache`) for full note content. This significantly reduces baseline memory usage and improves performance for metadata-based operations.
+  - **Resilient Metadata Recovery**: Implemented a robust recovery path for the cache. If fetching the canonical `NoteJson` from the API fails, the service can now parse the raw Markdown content to synthesize the necessary metadata, ensuring the cache remains populated even with API inconsistencies.
+  - **Automated Cache Repair**: Introduced an optional, configurable system to automatically detect and repair inconsistencies in note frontmatter and tags during cache refreshes. This feature can be run in dry-run mode and has a configurable limit on the number of repairs per run.
+  - **Concurrency Control**: Added a concurrency limiter for cache refresh operations to prevent overwhelming the Obsidian API during initial builds and refreshes.
+
+- **Search Enhancement**:
+  - **Cache-Powered Search**: The `obsidian_global_search` tool has been updated to leverage the new `VaultCacheService`. It now falls back to the cache for search operations if the live API is slow or unavailable, providing a faster and more resilient search experience.
+
+- **Configuration**:
+  - **New Cache Configuration**: Added new environment variables (`OBSIDIAN_CACHE_CONTENT_MAX_ITEMS`, `OBSIDIAN_CACHE_CONTENT_TTL_SECONDS`, `OBSIDIAN_CACHE_REFRESH_CONCURRENCY`, `OBSIDIAN_CACHE_REPAIR_ENABLED`, `OBSIDIAN_CACHE_REPAIR_DRY_RUN`, `OBSIDIAN_CACHE_MAX_REPAIRS_PER_RUN`) to provide fine-grained control over the new cache and repair behaviors.
+
+- **Dependencies**:
+  - Added `lru-cache` to manage the new content cache.
+
+- **Documentation**:
+  - Removed the large, auto-generated `devdocs.md` file to streamline the repository.
+
 ## [2.1.0] - 2025-08-22
 
 ### Changed

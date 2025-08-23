@@ -2,8 +2,8 @@
  * @fileoverview Utilities for handling API errors.
  * @module src/services/obsidianRestAPI/utils/apiErrors
  */
-import { RequestContext, logger } from "../../../utils/index.js";
 import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
+import { RequestContext, logger } from "../../../utils/index.js";
 
 export type FetchError =
   | {
@@ -21,13 +21,17 @@ export function handleApiError(
   operation: string,
 ): McpError {
   const errorMessage =
-    typeof error.error === "string" ? error.error : JSON.stringify(error.error);
+    typeof error.error === "string"
+      ? error.error
+      : error.error
+        ? JSON.stringify(error.error)
+        : "Unknown error structure";
   logger.error(`Obsidian API Error during ${operation}: ${errorMessage}`, {
     ...context,
     apiError: error,
   });
 
-  if (errorMessage.includes("Not Found")) {
+  if (errorMessage && errorMessage.includes("Not Found")) {
     return new McpError(
       BaseErrorCode.NOT_FOUND,
       `File or resource not found in Obsidian during ${operation}.`,

@@ -142,22 +142,53 @@ export class ObsidianRestApiService {
 
   // --- Vault Methods ---
 
+  /**
+   * Retrieves file content, utilizing the cache if available.
+   * This should be the primary method used by tools to read file content.
+   */
   async getFileContent(
+    filePath: string,
+    format: "markdown" | "json" = "markdown",
+    context: RequestContext,
+  ): Promise<string | NoteJson> {
+    // If cache is enabled and ready, use it for content fetching.
+    if (this.vaultCacheService && this.vaultCacheService.isReady()) {
+      if (format === "json") {
+        // Reconstruct the NoteJson object from cached metadata and content
+        const metadata = this.vaultCacheService.getMetadata(filePath);
+        const content = await this.vaultCacheService.getContent(
+          filePath,
+          context,
+        );
+        if (metadata) {
+          return { ...metadata, content };
+        }
+      } else {
+        // Directly return the content from the on-demand cache
+        return this.vaultCacheService.getContent(filePath, context);
+      }
+    }
+
+    // Fallback to direct API call if cache is not ready or disabled.
+    return this.fetchFileContentDirect(filePath, format, context);
+  }
+
+  /**
+   * Fetches file content directly from the Obsidian API, bypassing the cache.
+   * This method is used internally by the cache service itself to populate the cache.
+   * @private
+   */
+  async fetchFileContentDirect(
     filePath: string,
     format: "markdown" | "json" = "markdown",
     context: RequestContext,
   ): Promise<string | NoteJson> {
     const acceptHeader =
       format === "json" ? "application/vnd.olrapi.note+json" : "text/markdown";
-    const encodedFilename = encodeVaultPath(filePath);
 
     const { data, error } = await this.apiClient.GET(`/vault/{filename}`, {
-      params: {
-        path: { filename: encodedFilename },
-      },
-      headers: {
-        Accept: acceptHeader,
-      },
+      params: { path: { filename: filePath } },
+      headers: { Accept: acceptHeader },
     });
 
     if (error) {
@@ -176,10 +207,9 @@ export class ObsidianRestApiService {
     context: RequestContext,
   ): Promise<void> {
     await this._performWriteOperation(filePath, context, async () => {
-      const encodedFilename = encodeVaultPath(filePath);
       const { error } = await this.apiClient.PUT(`/vault/{filename}`, {
         params: {
-          path: { filename: encodedFilename },
+          path: { filename: filePath },
         },
         headers: {
           "Content-Type": "text/markdown",
@@ -203,10 +233,9 @@ export class ObsidianRestApiService {
     context: RequestContext,
   ): Promise<void> {
     await this._performWriteOperation(filePath, context, async () => {
-      const encodedFilename = encodeVaultPath(filePath);
       const { error } = await this.apiClient.POST(`/vault/{filename}`, {
         params: {
-          path: { filename: encodedFilename },
+          path: { filename: filePath },
         },
         headers: {
           "Content-Type": "text/markdown",
@@ -226,10 +255,9 @@ export class ObsidianRestApiService {
 
   async deleteFile(filePath: string, context: RequestContext): Promise<void> {
     await this._performWriteOperation(filePath, context, async () => {
-      const encodedFilename = encodeVaultPath(filePath);
       const { error } = await this.apiClient.DELETE(`/vault/{filename}`, {
         params: {
-          path: { filename: encodedFilename },
+          path: { filename: filePath },
         },
       });
 
@@ -246,19 +274,20 @@ export class ObsidianRestApiService {
   async listFiles(dirPath: string, context: RequestContext): Promise<string[]> {
     type FileListResponse =
       paths["/vault/"]["get"]["responses"]["200"]["content"]["application/json"];
-    const encodedPath = encodeDirectoryPath(dirPath);
 
-    const { data, error } = encodedPath
+    const { data, error } = dirPath
       ? await this.apiClient.GET(`/vault/{pathToDirectory}/`, {
           params: {
-            path: { pathToDirectory: encodedPath },
+            path: { pathToDirectory: dirPath },
           },
         })
       : await this.apiClient.GET(`/vault/`, {});
 
     if (error) {
       logger.error(`Failed to list files in ${dirPath}`, { ...context, error });
-      throw handleApiError(error as FetchError, context, "listFiles");
+      // Return an empty array instead of throwing to allow cache builds to continue
+      // even if some directories are not found or inaccessible.
+      return [];
     }
     return (data as FileListResponse).files ?? [];
   }
@@ -267,10 +296,9 @@ export class ObsidianRestApiService {
     filePath: string,
     context: RequestContext,
   ): Promise<NoteStat | null> {
-    const encodedFilename = encodeVaultPath(filePath);
     const { error, response } = await this.apiClient.HEAD(`/vault/{filename}`, {
       params: {
-        path: { filename: encodedFilename },
+        path: { filename: filePath },
       },
     });
 
@@ -608,11 +636,10 @@ export class ObsidianRestApiService {
       const headers = this._buildPatchHeaders(options);
       const requestData =
         typeof content === "object" ? JSON.stringify(content) : content;
-      const encodedFilename = encodeVaultPath(filePath);
 
       const { error } = await this.apiClient.PATCH(`/vault/{filename}`, {
         params: {
-          path: { filename: encodedFilename },
+          path: { filename: filePath },
           header: headers,
         },
         body: requestData,

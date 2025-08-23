@@ -109,6 +109,38 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(30000),
+  OBSIDIAN_CACHE_CONTENT_MAX_ITEMS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(500),
+  OBSIDIAN_CACHE_CONTENT_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(3600),
+  OBSIDIAN_CACHE_REFRESH_CONCURRENCY: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(5),
+  OBSIDIAN_CACHE_REPAIR_ENABLED: z
+    .string()
+    .transform((val) => val.toLowerCase() === "true")
+    .default("false"),
+  OBSIDIAN_CACHE_REPAIR_DRY_RUN: z
+    .string()
+    .transform((val) => val.toLowerCase() === "true")
+    .default("false"),
+  OBSIDIAN_CACHE_MAX_REPAIRS_PER_RUN: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(500),
+  OBSIDIAN_CACHE_NORMALIZE_TAGS_TO_LOWERCASE: z
+    .string()
+    .transform((val) => val.toLowerCase() === "true")
+    .default("false"),
 });
 
 const parsedEnv = EnvSchema.safeParse(process.env);
@@ -188,6 +220,14 @@ export const config = {
   obsidianCacheRefreshIntervalMin: env.OBSIDIAN_CACHE_REFRESH_INTERVAL_MIN,
   obsidianEnableCache: env.OBSIDIAN_ENABLE_CACHE,
   obsidianApiSearchTimeoutMs: env.OBSIDIAN_API_SEARCH_TIMEOUT_MS,
+  obsidianCacheContentMaxItems: env.OBSIDIAN_CACHE_CONTENT_MAX_ITEMS,
+  obsidianCacheContentTtlSeconds: env.OBSIDIAN_CACHE_CONTENT_TTL_SECONDS,
+  obsidianCacheRefreshConcurrency: env.OBSIDIAN_CACHE_REFRESH_CONCURRENCY,
+  obsidianCacheRepairEnabled: env.OBSIDIAN_CACHE_REPAIR_ENABLED,
+  obsidianCacheRepairDryRun: env.OBSIDIAN_CACHE_REPAIR_DRY_RUN,
+  obsidianCacheMaxRepairsPerRun: env.OBSIDIAN_CACHE_MAX_REPAIRS_PER_RUN,
+  obsidianCacheNormalizeTagsToLowercase:
+    env.OBSIDIAN_CACHE_NORMALIZE_TAGS_TO_LOWERCASE,
   security: {
     authRequired: env.MCP_AUTH_MODE !== "none",
   },

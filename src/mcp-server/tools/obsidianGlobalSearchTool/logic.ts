@@ -268,29 +268,52 @@ export async function obsidianGlobalSearchLogic(
 
   if (apiFailedOrTimedOut) {
     if (vaultCacheService?.isReady()) {
-      strategyMessage += "Falling back to in-memory cache. ";
-      const cache = vaultCacheService.getCache();
-      const cacheResults: GlobalSearchResult[] = [];
+      strategyMessage += "Falling back to in-memory cache search. ";
+      const metadataMap = vaultCacheService.getAllMetadata();
+      const searchPromises: Promise<(GlobalSearchResult & { ctime: number }) | null>[] =
+        [];
 
-      for (const [filePath, cacheEntry] of cache.entries()) {
-        const matches = findMatchesInContent(
-          cacheEntry.content,
-          query,
-          useRegex,
-          caseSensitive,
-          contextLength,
-        );
-        if (matches.length > 0) {
-          cacheResults.push({
-            path: filePath,
-            filename: path.basename(filePath),
-            matches: matches,
-            modifiedTime: "", // Will be populated in processAndFilterResults
-            createdTime: "", // Will be populated in processAndFilterResults
-            numericMtime: cacheEntry.mtime,
-          });
-        }
+      for (const [filePath, metadata] of metadataMap.entries()) {
+        const promise = (async () => {
+          try {
+            const content = await vaultCacheService.getContent(
+              filePath,
+              context,
+            );
+            const matches = findMatchesInContent(
+              content,
+              query,
+              useRegex,
+              caseSensitive,
+              contextLength,
+            );
+
+            if (matches.length > 0) {
+              return {
+                path: filePath,
+                filename: path.basename(filePath),
+                matches: matches,
+                modifiedTime: "",
+                createdTime: "",
+                numericMtime: metadata.stat.mtime,
+                ctime: metadata.stat.ctime, // Pass ctime for processAndFilterResults
+              };
+            }
+          } catch (error) {
+            logger.warning(
+              `Could not process ${filePath} during cache fallback search.`,
+              { ...context, filePath, error },
+            );
+          }
+          return null;
+        })();
+        searchPromises.push(promise);
       }
+
+      const cacheResults = (await Promise.all(searchPromises)).filter(
+        (r): r is GlobalSearchResult & { ctime: number } => r !== null,
+      );
+
       allFilteredResults = await processAndFilterResults(
         cacheResults,
         params,
@@ -301,6 +324,7 @@ export async function obsidianGlobalSearchLogic(
         (sum, r) => sum + r.matches.length,
         0,
       );
+      strategyMessage += `Cache search complete, found ${allFilteredResults.length} potential files.`;
     } else {
       throw new McpError(
         BaseErrorCode.SERVICE_UNAVAILABLE,
