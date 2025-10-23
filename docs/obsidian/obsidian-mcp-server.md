@@ -1436,8 +1436,8 @@ async function toolLogic(
   const normalizedPath = input.path.endsWith('.md') ? input.path : `${input.path}.md`;
 
   // Build API URL
-  const baseUrl = process.env.OBSIDIAN_API_URL || 'https://127.0.0.1:27124';
-  const apiToken = process.env.OBSIDIAN_API_TOKEN;
+  const baseUrl = process.env.OBSIDIAN_BASE_URL || 'https://127.0.0.1:27124';
+  const apiToken = process.env.OBSIDIAN_API_KEY;
 
   if (!apiToken) {
     throw new McpError(

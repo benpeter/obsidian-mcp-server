@@ -113,7 +113,7 @@ export function handleNetworkError(
     ) {
       return new McpError(
         JsonRpcErrorCode.ServiceUnavailable,
-        `Cannot resolve Obsidian API host (${operation}). Check OBSIDIAN_API_URL configuration.`,
+        `Cannot resolve Obsidian API host (${operation}). Check OBSIDIAN_BASE_URL configuration.`,
         {
           originalError: error.message,
           operation,
@@ -128,7 +128,7 @@ export function handleNetworkError(
     ) {
       return new McpError(
         JsonRpcErrorCode.ServiceUnavailable,
-        `SSL/TLS certificate error (${operation}). Try setting OBSIDIAN_CERT_VALIDATION=false or trust the self-signed certificate.`,
+        `SSL/TLS certificate error (${operation}). Try setting OBSIDIAN_VERIFY_SSL=false or trust the self-signed certificate.`,
         {
           originalError: error.message,
           operation,
@@ -168,8 +168,8 @@ export function validateObsidianConfig(
   if (!apiUrl) {
     throw new McpError(
       JsonRpcErrorCode.ConfigurationError,
-      'OBSIDIAN_API_URL is not configured. Please set it in your environment variables.',
-      { configKey: 'OBSIDIAN_API_URL' },
+      'OBSIDIAN_BASE_URL is not configured. Please set it in your environment variables.',
+      { configKey: 'OBSIDIAN_BASE_URL' },
     );
   }
 
@@ -181,8 +181,8 @@ export function validateObsidianConfig(
   } catch {
     throw new McpError(
       JsonRpcErrorCode.ConfigurationError,
-      `Invalid OBSIDIAN_API_URL format: ${apiUrl}. Must be a valid URL (e.g., https://127.0.0.1:27124)`,
-      { configKey: 'OBSIDIAN_API_URL', value: apiUrl },
+      `Invalid OBSIDIAN_BASE_URL format: ${apiUrl}. Must be a valid URL (e.g., https://127.0.0.1:27124)`,
+      { configKey: 'OBSIDIAN_BASE_URL', value: apiUrl },
     );
   }
 }

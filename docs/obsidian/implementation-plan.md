@@ -145,7 +145,7 @@ type ErrorResponse = components['schemas']['Error'];
 
 1. **Create ObsidianClient** (`src/services/obsidian/core/ObsidianClient.ts`)
    - Initialize openapi-fetch client with generated types
-   - Configure base URL from environment (`OBSIDIAN_API_URL`)
+   - Configure base URL from environment (`OBSIDIAN_BASE_URL`)
    - Configure authorization header with API token
    - Handle self-signed certificate issues
    - Implement request timeout (5s default)
@@ -177,9 +177,9 @@ type ErrorResponse = components['schemas']['Error'];
 
 7. **Update config**:
    - Add environment variables to `src/config/index.ts`:
-     - `OBSIDIAN_API_URL` (default: `https://127.0.0.1:27124`)
-     - `OBSIDIAN_API_TOKEN` (required)
-     - `OBSIDIAN_CERT_VALIDATION` (optional, default: false for self-signed)
+     - `OBSIDIAN_BASE_URL` (default: `https://127.0.0.1:27124`)
+     - `OBSIDIAN_API_KEY` (required)
+     - `OBSIDIAN_VERIFY_SSL` (optional, default: false for self-signed)
 
 ### Phase 2: Core Note Operations (Tools 1-10) ✅ COMPLETE
 
@@ -275,9 +275,9 @@ type ErrorResponse = components['schemas']['Error'];
 
 ```bash
 # Obsidian API Configuration
-OBSIDIAN_API_URL=https://127.0.0.1:27124  # Default localhost
-OBSIDIAN_API_TOKEN=your-api-token-here     # Required, from plugin settings
-OBSIDIAN_CERT_VALIDATION=false             # Optional, for self-signed certs
+OBSIDIAN_BASE_URL=https://127.0.0.1:27124  # Default localhost
+OBSIDIAN_API_KEY=your-api-key-here         # Required, from plugin settings
+OBSIDIAN_VERIFY_SSL=false                  # Optional, for self-signed certs
 ```
 
 ### 3.3 Error Handling Strategy
@@ -386,7 +386,7 @@ All files require:
 ### 6.1 Known Challenges
 
 1. **Self-signed certificates**: May require disabling Node's certificate validation
-   - **Solution**: Document setup, provide `OBSIDIAN_CERT_VALIDATION` config
+   - **Solution**: Document setup, provide `OBSIDIAN_VERIFY_SSL` config
 
 2. **Plugin dependencies**: Dataview required for DQL, Periodic Notes for periodic operations
    - **Solution**: Clear error messages, check plugin availability
@@ -486,9 +486,9 @@ All files require:
 - [x] Add DI token to `src/container/tokens.ts`
 - [x] Register provider in `src/container/registrations/core.ts`
 - [x] Add config vars to `src/config/index.ts`:
-  - [x] `OBSIDIAN_API_URL`
-  - [x] `OBSIDIAN_API_TOKEN`
-  - [x] `OBSIDIAN_CERT_VALIDATION`
+  - [x] `OBSIDIAN_BASE_URL`
+  - [x] `OBSIDIAN_API_KEY`
+  - [x] `OBSIDIAN_VERIFY_SSL`
 - [x] Test service layer initialization (via devcheck)
 - [x] Verify DI injection works (via TypeScript compilation)
 

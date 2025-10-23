@@ -26,21 +26,21 @@
       ],
       "environmentVariables": [
         {
-          "name": "OBSIDIAN_API_URL",
+          "name": "OBSIDIAN_BASE_URL",
           "description": "Base URL for Obsidian Local REST API (default: https://127.0.0.1:27124).",
           "format": "string",
           "isRequired": false,
           "default": "https://127.0.0.1:27124"
         },
         {
-          "name": "OBSIDIAN_API_TOKEN",
-          "description": "API token generated from Obsidian Local REST API plugin settings.",
+          "name": "OBSIDIAN_API_KEY",
+          "description": "API key generated from Obsidian Local REST API plugin settings.",
           "format": "string",
           "isRequired": true
         },
         {
-          "name": "OBSIDIAN_CERT_VALIDATION",
-          "description": "Enable certificate validation for HTTPS (set to 'false' for self-signed certs).",
+          "name": "OBSIDIAN_VERIFY_SSL",
+          "description": "Enable SSL certificate verification for HTTPS (set to 'false' for self-signed certs).",
           "format": "string",
           "isRequired": false,
           "default": "false"
@@ -75,21 +75,21 @@
       ],
       "environmentVariables": [
         {
-          "name": "OBSIDIAN_API_URL",
+          "name": "OBSIDIAN_BASE_URL",
           "description": "Base URL for Obsidian Local REST API (default: https://127.0.0.1:27124).",
           "format": "string",
           "isRequired": false,
           "default": "https://127.0.0.1:27124"
         },
         {
-          "name": "OBSIDIAN_API_TOKEN",
-          "description": "API token generated from Obsidian Local REST API plugin settings.",
+          "name": "OBSIDIAN_API_KEY",
+          "description": "API key generated from Obsidian Local REST API plugin settings.",
           "format": "string",
           "isRequired": true
         },
         {
-          "name": "OBSIDIAN_CERT_VALIDATION",
-          "description": "Enable certificate validation for HTTPS (set to 'false' for self-signed certs).",
+          "name": "OBSIDIAN_VERIFY_SSL",
+          "description": "Enable SSL certificate verification for HTTPS (set to 'false' for self-signed certs).",
           "format": "string",
           "isRequired": false,
           "default": "false"

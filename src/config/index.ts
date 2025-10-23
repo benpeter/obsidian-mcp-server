@@ -358,11 +358,11 @@ const parseConfig = () => {
           }
         : undefined,
     obsidian:
-      env.OBSIDIAN_API_URL || env.OBSIDIAN_API_TOKEN
+      env.OBSIDIAN_BASE_URL || env.OBSIDIAN_API_KEY
         ? {
-            apiUrl: env.OBSIDIAN_API_URL,
-            apiToken: env.OBSIDIAN_API_TOKEN,
-            certValidation: env.OBSIDIAN_CERT_VALIDATION,
+            apiUrl: env.OBSIDIAN_BASE_URL,
+            apiToken: env.OBSIDIAN_API_KEY,
+            certValidation: env.OBSIDIAN_VERIFY_SSL,
           }
         : undefined,
     // The following fields will be derived and are not directly from env

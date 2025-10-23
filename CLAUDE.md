@@ -275,7 +275,7 @@ All config validated via Zod in `src/config/index.ts`. Derives `serviceName`/`ve
 | **Auth**      | `MCP_AUTH_MODE` (`none`\|`jwt`\|`oauth`), `MCP_AUTH_SECRET_KEY`, `OAUTH_*`                                      |
 | **Storage**   | `STORAGE_PROVIDER_TYPE` (`in-memory`\|`filesystem`\|`supabase`\|`surrealdb`\|`cloudflare-r2/kv`), `SURREALDB_*` |
 | **LLM**       | `OPENROUTER_API_KEY`, `OPENROUTER_APP_URL/NAME`, `LLM_DEFAULT_*`                                                |
-| **Obsidian**  | `OBSIDIAN_API_URL`, `OBSIDIAN_API_TOKEN`, `OBSIDIAN_CERT_VALIDATION`                                            |
+| **Obsidian**  | `OBSIDIAN_BASE_URL`, `OBSIDIAN_API_KEY`, `OBSIDIAN_VERIFY_SSL`                                                  |
 | **Telemetry** | `OTEL_ENABLED`, `OTEL_SERVICE_NAME/VERSION`, `OTEL_EXPORTER_OTLP_*`                                             |
 
 ---
