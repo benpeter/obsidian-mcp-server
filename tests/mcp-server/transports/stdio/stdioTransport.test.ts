@@ -12,28 +12,24 @@ import type { RequestContext } from '@/utils/index.js';
 
 // Mock the SDK's StdioServerTransport
 vi.mock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
-  StdioServerTransport: vi.fn().mockImplementation(() => ({
-    close: vi.fn().mockResolvedValue(undefined),
-  })),
+  StdioServerTransport: vi.fn().mockImplementation(function (this: any) {
+    this.close = vi.fn().mockResolvedValue(undefined);
+  }),
 }));
 
 // Mock utilities
-vi.mock('@/utils/index.js', async () => {
-  const actual = await vi.importActual('@/utils/index.js');
-  return {
-    ...actual,
-    logger: {
-      info: vi.fn(),
-      debug: vi.fn(),
-      error: vi.fn(),
-      warning: vi.fn(),
-    },
-    logStartupBanner: vi.fn(),
-    ErrorHandler: {
-      handleError: vi.fn((err) => err),
-    },
-  };
-});
+vi.mock('@/utils/index.js', () => ({
+  logger: {
+    info: vi.fn(),
+    debug: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+  },
+  logStartupBanner: vi.fn(),
+  ErrorHandler: {
+    handleError: vi.fn((err) => err),
+  },
+}));
 
 describe('Stdio Transport', () => {
   let mockServer: Partial<McpServer>;
