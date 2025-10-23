@@ -1,127 +1,92 @@
 /**
- * @fileoverview Main entry point for the MCP server.
+ * @fileoverview Main entry point for the MCP (Model Context Protocol) server.
+ * This file orchestrates the server's lifecycle:
+ * 1. Initializes the core `McpServer` instance (from `@modelcontextprotocol/sdk`) with its identity and capabilities.
+ * 2. Registers available resources and tools, making them discoverable and usable by clients.
+ * 3. Selects and starts the appropriate communication transport (stdio or Streamable HTTP)
+ *    based on configuration.
+ * 4. Handles top-level error management during startup.
+ *
+ * MCP Specification References:
+ * - Lifecycle: https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle
+ * - Overview (Capabilities): https://modelcontextprotocol.io/specification/2025-06-18/basic/index
+ * - Transports: https://modelcontextprotocol.io/specification/2025-06-18/basic/transports
  * @module src/mcp-server/server
  */
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { container } from 'tsyringe';
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { ServerType } from "@hono/node-server";
-import { config, environment } from "../config/index.js";
-import { ErrorHandler, logger, requestContextService } from "../utils/index.js";
-import { ObsidianRestApiService } from "../services/obsidianRestAPI/index.js";
-import { VaultCacheService } from "../services/obsidianRestAPI/vaultCache/index.js";
-import { registerObsidianDeleteNoteTool } from "./tools/obsidianDeleteNoteTool/index.js";
-import { registerObsidianGlobalSearchTool } from "./tools/obsidianGlobalSearchTool/index.js";
-import { registerObsidianListNotesTool } from "./tools/obsidianListNotesTool/index.js";
-import { registerObsidianManageFrontmatterTool } from "./tools/obsidianManageFrontmatterTool/index.js";
-import { registerObsidianManageTagsTool } from "./tools/obsidianManageTagsTool/index.js";
-import { registerObsidianReadNoteTool } from "./tools/obsidianReadNoteTool/index.js";
-import { registerObsidianSearchReplaceTool } from "./tools/obsidianSearchReplaceTool/index.js";
-import { registerObsidianUpdateNoteTool } from "./tools/obsidianUpdateNoteTool/index.js";
-import { startHttpTransport } from "./transports/http/httpTransport.js";
-import { startStdioTransport } from "./transports/stdio/stdioTransport.js";
+import { config } from '@/config/index.js';
+import { PromptRegistry } from '@/mcp-server/prompts/prompt-registration.js';
+import { ResourceRegistry } from '@/mcp-server/resources/resource-registration.js';
+import { RootsRegistry } from '@/mcp-server/roots/roots-registration.js';
+import { ToolRegistry } from '@/mcp-server/tools/tool-registration.js';
+import { logger, requestContextService } from '@/utils/index.js';
 
-async function createMcpServerInstance(
-  obsidianService: ObsidianRestApiService,
-  vaultCacheService: VaultCacheService | undefined,
-): Promise<McpServer> {
+/**
+ * Creates and configures a new instance of the `McpServer`.
+ * This function now resolves tool and resource definitions from the DI container.
+ *
+ * @returns A promise resolving with the configured `McpServer` instance.
+ * @throws {McpError} If any resource or tool registration fails.
+ * @private
+ */
+export async function createMcpServerInstance(): Promise<McpServer> {
   const context = requestContextService.createRequestContext({
-    operation: "createMcpServerInstance",
+    operation: 'createMcpServerInstance',
   });
-  logger.info("Initializing MCP server instance", context);
+  logger.info('Initializing MCP server instance', context);
 
   requestContextService.configure({
     appName: config.mcpServerName,
     appVersion: config.mcpServerVersion,
-    environment,
+    environment: config.environment,
   });
 
   const server = new McpServer(
-    { name: config.mcpServerName, version: config.mcpServerVersion },
+    {
+      name: config.mcpServerName,
+      version: config.mcpServerVersion,
+      description: config.mcpServerDescription,
+    },
     {
       capabilities: {
         logging: {},
         resources: { listChanged: true },
         tools: { listChanged: true },
+        elicitation: {},
+        sampling: {}, // MCP 2025-06-18: Allow tools to request LLM completions from clients
+        prompts: { listChanged: true }, // MCP 2025-06-18: Provide structured message templates
+        roots: { listChanged: true }, // MCP 2025-06-18: Workspace/filesystem context awareness
       },
     },
   );
 
   try {
-    await registerObsidianDeleteNoteTool(server, obsidianService);
-    await registerObsidianGlobalSearchTool(server, obsidianService);
-    await registerObsidianListNotesTool(server, obsidianService);
-    await registerObsidianManageFrontmatterTool(server, obsidianService);
-    await registerObsidianManageTagsTool(server, obsidianService);
-    await registerObsidianReadNoteTool(server, obsidianService);
-    await registerObsidianSearchReplaceTool(server, obsidianService);
-    await registerObsidianUpdateNoteTool(server, obsidianService);
+    logger.debug('Registering all MCP capabilities via registries...', context);
 
-    if (vaultCacheService) {
-      vaultCacheService.buildVaultCache().catch((err) => {
-        logger.error("Error building vault cache", { ...context, error: err });
-      });
-    }
+    // Resolve and use registry services
+    const toolRegistry = container.resolve(ToolRegistry);
+    await toolRegistry.registerAll(server);
+
+    const resourceRegistry = container.resolve(ResourceRegistry);
+    await resourceRegistry.registerAll(server);
+
+    const promptRegistry = container.resolve(PromptRegistry);
+    promptRegistry.registerAll(server);
+
+    const rootsRegistry = container.resolve(RootsRegistry);
+    void rootsRegistry.registerAll(server);
+
+    logger.info('All MCP capabilities registered successfully', context);
   } catch (err) {
-    logger.error("Failed to register tools", { ...context, error: err });
+    logger.error('Failed to register MCP capabilities', {
+      ...context,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     throw err;
   }
 
   return server;
-}
-
-async function startTransport(
-  obsidianService: ObsidianRestApiService,
-  vaultCacheService: VaultCacheService | undefined,
-): Promise<McpServer | ServerType | void> {
-  const transportType = config.mcpTransportType;
-  const context = requestContextService.createRequestContext({
-    operation: "startTransport",
-    transport: transportType,
-  });
-  logger.info(`Starting transport: ${transportType}`, context);
-
-  if (transportType === "http") {
-    const mcpServerFactory = () =>
-      createMcpServerInstance(obsidianService, vaultCacheService);
-    const { server } = await startHttpTransport(mcpServerFactory, context);
-    return server;
-  }
-
-  if (transportType === "stdio") {
-    const server = await createMcpServerInstance(
-      obsidianService,
-      vaultCacheService,
-    );
-    await startStdioTransport(server, context);
-    return server;
-  }
-
-  throw new Error(`Unsupported transport type: ${transportType}`);
-}
-
-export async function initializeAndStartServer(
-  obsidianService: ObsidianRestApiService,
-  vaultCacheService: VaultCacheService | undefined,
-): Promise<void | McpServer | ServerType> {
-  const context = requestContextService.createRequestContext({
-    operation: "initializeAndStartServer",
-  });
-  logger.info("MCP Server initialization sequence started.", context);
-
-  try {
-    const result = await startTransport(obsidianService, vaultCacheService);
-    logger.info("MCP Server initialization sequence completed.", context);
-    return result;
-  } catch (err) {
-    logger.fatal("Critical error during server initialization.", {
-      ...context,
-      error: err,
-    });
-    ErrorHandler.handleError(err, {
-      operation: "initializeAndStartServer",
-      context,
-      critical: true,
-    });
-    process.exit(1);
-  }
 }

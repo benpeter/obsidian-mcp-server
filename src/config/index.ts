@@ -1,237 +1,413 @@
 /**
  * @fileoverview Loads, validates, and exports application configuration.
+ * This module centralizes configuration management, sourcing values from
+ * environment variables. It uses Zod for schema validation to ensure type safety
+ * and correctness of configuration parameters, and is designed to be
+ * environment-agnostic (e.g., Node.js, Cloudflare Workers).
+ *
  * @module src/config/index
  */
+import dotenv from 'dotenv';
+import { z } from 'zod';
 
-import dotenv from "dotenv";
-import { existsSync, mkdirSync, readFileSync, statSync } from "fs";
-import path, { dirname, join } from "path";
-import { fileURLToPath } from "url";
-import { z } from "zod";
+import packageJson from '../../package.json' with { type: 'json' };
+import { JsonRpcErrorCode, McpError } from '../types-global/errors.js';
 
-dotenv.config();
-
-// --- Determine Project Root ---
-const findProjectRoot = (startDir: string): string => {
-  let currentDir = startDir;
-  while (true) {
-    const packageJsonPath = join(currentDir, "package.json");
-    if (existsSync(packageJsonPath)) {
-      return currentDir;
-    }
-    const parentDir = dirname(currentDir);
-    if (parentDir === currentDir) {
-      throw new Error(
-        `Could not find project root (package.json) starting from ${startDir}`,
-      );
-    }
-    currentDir = parentDir;
-  }
+type PackageManifest = {
+  name?: string;
+  version?: string;
+  description?: string;
 };
 
-let projectRoot: string;
-try {
-  const currentModuleDir = dirname(fileURLToPath(import.meta.url));
-  projectRoot = findProjectRoot(currentModuleDir);
-} catch (error: any) {
-  console.error(`FATAL: Error determining project root: ${error.message}`);
-  projectRoot = process.cwd();
-  console.warn(
-    `Warning: Using process.cwd() (${projectRoot}) as fallback project root.`,
-  );
-}
-// --- End Determine Project Root ---
+const packageManifest = packageJson as PackageManifest;
+const hasFileSystemAccess =
+  typeof process !== 'undefined' &&
+  typeof process.versions === 'object' &&
+  process.versions !== null &&
+  typeof process.versions.node === 'string';
 
-const pkgPath = join(projectRoot, "package.json");
-let pkg = { name: "obsidian-mcp-server", version: "0.0.0" };
+// Suppress dotenv's noisy initial log message as suggested by its output.
+dotenv.config({ quiet: true });
 
-try {
-  pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-} catch (error) {
-  if (process.stderr.isTTY) {
-    console.error(
-      "Warning: Could not read package.json for default config values.",
-      error,
-    );
+// --- Helper Functions ---
+const emptyStringAsUndefined = (val: unknown) => {
+  if (typeof val === 'string' && val.trim() === '') {
+    return undefined;
   }
-}
+  return val;
+};
 
-const EnvSchema = z.object({
-  MCP_SERVER_NAME: z.string().optional(),
-  MCP_SERVER_VERSION: z.string().optional(),
-  MCP_LOG_LEVEL: z.string().default("info"),
-  LOGS_DIR: z.string().default(path.join(projectRoot, "logs")),
-  NODE_ENV: z.string().default("development"),
-  MCP_TRANSPORT_TYPE: z.enum(["stdio", "http"]).default("stdio"),
-  MCP_SESSION_MODE: z.enum(["stateless", "stateful", "auto"]).default("auto"),
-  MCP_HTTP_PORT: z.coerce.number().int().positive().default(3016),
-  MCP_HTTP_HOST: z.string().default("127.0.0.1"),
-  MCP_HTTP_ENDPOINT_PATH: z.string().default("/mcp"),
-  MCP_HTTP_MAX_PORT_RETRIES: z.coerce.number().int().nonnegative().default(15),
-  MCP_HTTP_PORT_RETRY_DELAY_MS: z.coerce
-    .number()
-    .int()
-    .nonnegative()
-    .default(50),
-  MCP_STATEFUL_SESSION_STALE_TIMEOUT_MS: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(1_800_000),
-  MCP_ALLOWED_ORIGINS: z.string().optional(),
-  MCP_AUTH_SECRET_KEY: z
-    .string()
-    .min(32, "MCP_AUTH_SECRET_KEY must be at least 32 characters long.")
+// --- Schema Definition ---
+const ConfigSchema = z.object({
+  // Package information sourced from environment variables
+  pkg: z.object({
+    name: z.string(),
+    version: z.string(),
+    description: z.string().optional(),
+  }),
+  mcpServerName: z.string(), // Will be derived from pkg.name
+  mcpServerVersion: z.string(), // Will be derived from pkg.version
+  mcpServerDescription: z.string().optional(), // Will be derived from pkg.description
+  logLevel: z
+    .preprocess(
+      (val) => {
+        const str = emptyStringAsUndefined(val);
+        if (typeof str === 'string') {
+          const lower = str.toLowerCase();
+          const aliasMap: Record<string, string> = {
+            warning: 'warn',
+            err: 'error',
+            information: 'info',
+          };
+          return aliasMap[lower] ?? lower;
+        }
+        return str;
+      },
+      z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']),
+    )
+    .default('debug'),
+  logsPath: z.string().optional(), // Made optional as it's Node-specific
+  environment: z
+    .preprocess(
+      (val) => {
+        const str = emptyStringAsUndefined(val);
+        if (typeof str === 'string') {
+          const lower = str.toLowerCase();
+          const aliasMap: Record<string, string> = {
+            dev: 'development',
+            prod: 'production',
+            test: 'testing',
+          };
+          return aliasMap[lower] ?? lower;
+        }
+        return str;
+      },
+      z.enum(['development', 'production', 'testing']),
+    )
+    .default('development'),
+  mcpTransportType: z.preprocess(
+    emptyStringAsUndefined,
+    z.enum(['stdio', 'http']).default('stdio'),
+  ),
+  mcpSessionMode: z.preprocess(
+    emptyStringAsUndefined,
+    z.enum(['stateless', 'stateful', 'auto']).default('auto'),
+  ),
+  mcpResponseVerbosity: z.preprocess(
+    emptyStringAsUndefined,
+    z.enum(['minimal', 'standard', 'full']).default('standard'),
+  ),
+  mcpHttpPort: z.coerce.number().default(3010),
+  mcpHttpHost: z.string().default('127.0.0.1'),
+  mcpHttpEndpointPath: z.string().default('/mcp'),
+  mcpHttpMaxPortRetries: z.coerce.number().default(15),
+  mcpHttpPortRetryDelayMs: z.coerce.number().default(50),
+  mcpStatefulSessionStaleTimeoutMs: z.coerce.number().default(1_800_000),
+  mcpAllowedOrigins: z.array(z.string()).optional(),
+  mcpAuthSecretKey: z.string().optional(),
+  mcpAuthMode: z.preprocess(
+    emptyStringAsUndefined,
+    z.enum(['jwt', 'oauth', 'none']).default('none'),
+  ),
+  oauthIssuerUrl: z.string().url().optional(),
+  oauthJwksUri: z.string().url().optional(),
+  oauthAudience: z.string().optional(),
+  oauthJwksCooldownMs: z.coerce.number().default(300_000), // 5 minutes
+  oauthJwksTimeoutMs: z.coerce.number().default(5_000), // 5 seconds
+  mcpServerResourceIdentifier: z.string().url().optional(), // RFC 8707 resource indicator
+  devMcpClientId: z.string().optional(),
+  devMcpScopes: z.array(z.string()).optional(),
+  openrouterAppUrl: z.string().default('http://localhost:3000'),
+  openrouterAppName: z.string(),
+  openrouterApiKey: z.string().optional(),
+  llmDefaultModel: z.string().default('google/gemini-2.5-flash-preview-05-20'),
+  llmDefaultTemperature: z.coerce.number().optional(),
+  llmDefaultTopP: z.coerce.number().optional(),
+  llmDefaultMaxTokens: z.coerce.number().optional(),
+  llmDefaultTopK: z.coerce.number().optional(),
+  llmDefaultMinP: z.coerce.number().optional(),
+  oauthProxy: z
+    .object({
+      authorizationUrl: z.string().url().optional(),
+      tokenUrl: z.string().url().optional(),
+      revocationUrl: z.string().url().optional(),
+      issuerUrl: z.string().url().optional(),
+      serviceDocumentationUrl: z.string().url().optional(),
+      defaultClientRedirectUris: z.array(z.string()).optional(),
+    })
     .optional(),
-  MCP_AUTH_MODE: z.enum(["jwt", "oauth", "none"]).default("none"),
-  OAUTH_ISSUER_URL: z.string().url().optional(),
-  OAUTH_JWKS_URI: z.string().url().optional(),
-  OAUTH_AUDIENCE: z.string().optional(),
-  DEV_MCP_CLIENT_ID: z.string().optional(),
-  DEV_MCP_SCOPES: z.string().optional(),
-  OBSIDIAN_API_KEY: z.string().min(1, "OBSIDIAN_API_KEY cannot be empty"),
-  OBSIDIAN_BASE_URL: z.string().url().default("http://127.0.0.1:27123"),
-  OBSIDIAN_VERIFY_SSL: z
-    .string()
-    .transform((val) => val.toLowerCase() === "true")
-    .default("false"),
-  OBSIDIAN_CACHE_REFRESH_INTERVAL_MIN: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(10),
-  OBSIDIAN_ENABLE_CACHE: z
-    .string()
-    .transform((val) => val.toLowerCase() === "true")
-    .default("true"),
-  OBSIDIAN_API_SEARCH_TIMEOUT_MS: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(30000),
-  OBSIDIAN_CACHE_CONTENT_MAX_ITEMS: z.coerce
-    .number()
-    .int()
-    .nonnegative()
-    .default(500),
-  OBSIDIAN_CACHE_CONTENT_TTL_SECONDS: z.coerce
-    .number()
-    .int()
-    .nonnegative()
-    .default(3600),
-  OBSIDIAN_CACHE_REFRESH_CONCURRENCY: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(5),
-  OBSIDIAN_CACHE_REPAIR_ENABLED: z
-    .string()
-    .transform((val) => val.toLowerCase() === "true")
-    .default("false"),
-  OBSIDIAN_CACHE_REPAIR_DRY_RUN: z
-    .string()
-    .transform((val) => val.toLowerCase() === "true")
-    .default("false"),
-  OBSIDIAN_CACHE_MAX_REPAIRS_PER_RUN: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(500),
-  OBSIDIAN_CACHE_NORMALIZE_TAGS_TO_LOWERCASE: z
-    .string()
-    .transform((val) => val.toLowerCase() === "true")
-    .default("false"),
+  supabase: z
+    .object({
+      url: z.string().url(),
+      anonKey: z.string(),
+      serviceRoleKey: z.string().optional(),
+    })
+    .optional(),
+  surrealdb: z
+    .object({
+      url: z.string().url(),
+      namespace: z.string(),
+      database: z.string(),
+      username: z.string().optional(),
+      password: z.string().optional(),
+      tableName: z.string().default('kv_store'),
+    })
+    .optional(),
+  storage: z.object({
+    providerType: z
+      .preprocess(
+        (val) => {
+          const str = emptyStringAsUndefined(val);
+          if (typeof str === 'string') {
+            const lower = str.toLowerCase();
+            const aliasMap: Record<string, string> = {
+              mem: 'in-memory',
+              fs: 'filesystem',
+            };
+            return aliasMap[lower] ?? lower;
+          }
+          return str;
+        },
+        z.enum([
+          'in-memory',
+          'filesystem',
+          'supabase',
+          'surrealdb',
+          'cloudflare-r2',
+          'cloudflare-kv',
+          'cloudflare-d1',
+        ]),
+      )
+      .default('in-memory'),
+    filesystemPath: z.string().default('./.storage'), // This remains, but will only be used if providerType is 'filesystem'
+  }),
+  openTelemetry: z.object({
+    enabled: z.coerce.boolean().default(false),
+    serviceName: z.string(),
+    serviceVersion: z.string(),
+    tracesEndpoint: z.string().url().optional(),
+    metricsEndpoint: z.string().url().optional(),
+    samplingRatio: z.coerce.number().default(1.0),
+    logLevel: z
+      .preprocess(
+        (val) => {
+          const str = emptyStringAsUndefined(val);
+          if (typeof str === 'string') {
+            const lower = str.toLowerCase();
+            const aliasMap: Record<string, string> = {
+              err: 'ERROR',
+              warning: 'WARN',
+              information: 'INFO',
+            };
+            return aliasMap[lower] ?? str.toUpperCase();
+          }
+          return str;
+        },
+        z.enum(['NONE', 'ERROR', 'WARN', 'INFO', 'DEBUG', 'VERBOSE', 'ALL']),
+      )
+      .default('INFO'),
+  }),
+  speech: z
+    .object({
+      tts: z
+        .object({
+          enabled: z.coerce.boolean().default(false),
+          provider: z.enum(['elevenlabs']).default('elevenlabs'),
+          apiKey: z.string().optional(),
+          baseUrl: z.string().url().optional(),
+          defaultVoiceId: z.string().optional(),
+          defaultModelId: z.string().optional(),
+          timeout: z.coerce.number().optional(),
+        })
+        .optional(),
+      stt: z
+        .object({
+          enabled: z.coerce.boolean().default(false),
+          provider: z.enum(['openai-whisper']).default('openai-whisper'),
+          apiKey: z.string().optional(),
+          baseUrl: z.string().url().optional(),
+          defaultModelId: z.string().optional(),
+          timeout: z.coerce.number().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
-const parsedEnv = EnvSchema.safeParse(process.env);
+// --- Parsing Logic ---
+const parseConfig = () => {
+  const env = process.env;
 
-if (!parsedEnv.success) {
-  console.error(
-    "❌ Invalid environment variables:",
-    parsedEnv.error.flatten().fieldErrors,
-  );
-  throw new Error("Invalid environment configuration.");
-}
+  const rawConfig = {
+    pkg: {
+      name: env.PACKAGE_NAME ?? packageManifest.name,
+      version: env.PACKAGE_VERSION ?? packageManifest.version,
+      description: env.PACKAGE_DESCRIPTION ?? packageManifest.description,
+    },
+    logLevel: env.MCP_LOG_LEVEL,
+    logsPath: env.LOGS_DIR,
+    environment: env.NODE_ENV,
+    mcpTransportType: env.MCP_TRANSPORT_TYPE,
+    mcpSessionMode: env.MCP_SESSION_MODE,
+    mcpResponseVerbosity: env.MCP_RESPONSE_VERBOSITY,
+    mcpHttpPort: env.MCP_HTTP_PORT,
+    mcpHttpHost: env.MCP_HTTP_HOST,
+    mcpHttpEndpointPath: env.MCP_HTTP_ENDPOINT_PATH,
+    mcpHttpMaxPortRetries: env.MCP_HTTP_MAX_PORT_RETRIES,
+    mcpHttpPortRetryDelayMs: env.MCP_HTTP_PORT_RETRY_DELAY_MS,
+    mcpStatefulSessionStaleTimeoutMs: env.MCP_STATEFUL_SESSION_STALE_TIMEOUT_MS,
+    mcpAllowedOrigins: env.MCP_ALLOWED_ORIGINS?.split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+    mcpAuthSecretKey: env.MCP_AUTH_SECRET_KEY,
+    mcpAuthMode: env.MCP_AUTH_MODE,
+    oauthIssuerUrl: env.OAUTH_ISSUER_URL,
+    oauthJwksUri: env.OAUTH_JWKS_URI,
+    oauthAudience: env.OAUTH_AUDIENCE,
+    oauthJwksCooldownMs: env.OAUTH_JWKS_COOLDOWN_MS,
+    oauthJwksTimeoutMs: env.OAUTH_JWKS_TIMEOUT_MS,
+    mcpServerResourceIdentifier: env.MCP_SERVER_RESOURCE_IDENTIFIER,
+    devMcpClientId: env.DEV_MCP_CLIENT_ID,
+    devMcpScopes: env.DEV_MCP_SCOPES?.split(',').map((s) => s.trim()),
+    openrouterAppUrl: env.OPENROUTER_APP_URL,
+    openrouterAppName: env.OPENROUTER_APP_NAME,
+    openrouterApiKey: env.OPENROUTER_API_KEY,
+    llmDefaultModel: env.LLM_DEFAULT_MODEL,
+    llmDefaultTemperature: env.LLM_DEFAULT_TEMPERATURE,
+    llmDefaultTopP: env.LLM_DEFAULT_TOP_P,
+    llmDefaultMaxTokens: env.LLM_DEFAULT_MAX_TOKENS,
+    llmDefaultTopK: env.LLM_DEFAULT_TOP_K,
+    llmDefaultMinP: env.LLM_DEFAULT_MIN_P,
+    oauthProxy:
+      env.OAUTH_PROXY_AUTHORIZATION_URL || env.OAUTH_PROXY_TOKEN_URL
+        ? {
+            authorizationUrl: env.OAUTH_PROXY_AUTHORIZATION_URL,
+            tokenUrl: env.OAUTH_PROXY_TOKEN_URL,
+            revocationUrl: env.OAUTH_PROXY_REVOCATION_URL,
+            issuerUrl: env.OAUTH_PROXY_ISSUER_URL,
+            serviceDocumentationUrl: env.OAUTH_PROXY_SERVICE_DOCUMENTATION_URL,
+            defaultClientRedirectUris:
+              env.OAUTH_PROXY_DEFAULT_CLIENT_REDIRECT_URIS?.split(',')
+                .map((uri) => uri.trim())
+                .filter(Boolean),
+          }
+        : undefined,
+    supabase:
+      env.SUPABASE_URL && env.SUPABASE_ANON_KEY
+        ? {
+            url: env.SUPABASE_URL,
+            anonKey: env.SUPABASE_ANON_KEY,
+            serviceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
+          }
+        : undefined,
+    surrealdb:
+      env.SURREALDB_URL && env.SURREALDB_NAMESPACE && env.SURREALDB_DATABASE
+        ? {
+            url: env.SURREALDB_URL,
+            namespace: env.SURREALDB_NAMESPACE,
+            database: env.SURREALDB_DATABASE,
+            username: env.SURREALDB_USERNAME,
+            password: env.SURREALDB_PASSWORD,
+            tableName: env.SURREALDB_TABLE_NAME,
+          }
+        : undefined,
+    storage: {
+      providerType: env.STORAGE_PROVIDER_TYPE,
+      filesystemPath: env.STORAGE_FILESYSTEM_PATH,
+    },
+    openTelemetry: {
+      enabled: env.OTEL_ENABLED,
+      serviceName: env.OTEL_SERVICE_NAME,
+      serviceVersion: env.OTEL_SERVICE_VERSION,
+      tracesEndpoint: env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+      metricsEndpoint: env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
+      samplingRatio: env.OTEL_TRACES_SAMPLER_ARG,
+      logLevel: env.OTEL_LOG_LEVEL,
+    },
+    speech:
+      env.SPEECH_TTS_ENABLED || env.SPEECH_STT_ENABLED
+        ? {
+            tts: env.SPEECH_TTS_ENABLED
+              ? {
+                  enabled: env.SPEECH_TTS_ENABLED,
+                  provider: env.SPEECH_TTS_PROVIDER,
+                  apiKey: env.SPEECH_TTS_API_KEY,
+                  baseUrl: env.SPEECH_TTS_BASE_URL,
+                  defaultVoiceId: env.SPEECH_TTS_DEFAULT_VOICE_ID,
+                  defaultModelId: env.SPEECH_TTS_DEFAULT_MODEL_ID,
+                  timeout: env.SPEECH_TTS_TIMEOUT,
+                }
+              : undefined,
+            stt: env.SPEECH_STT_ENABLED
+              ? {
+                  enabled: env.SPEECH_STT_ENABLED,
+                  provider: env.SPEECH_STT_PROVIDER,
+                  apiKey: env.SPEECH_STT_API_KEY,
+                  baseUrl: env.SPEECH_STT_BASE_URL,
+                  defaultModelId: env.SPEECH_STT_DEFAULT_MODEL_ID,
+                  timeout: env.SPEECH_STT_TIMEOUT,
+                }
+              : undefined,
+          }
+        : undefined,
+    // The following fields will be derived and are not directly from env
+    mcpServerName: env.MCP_SERVER_NAME,
+    mcpServerVersion: env.MCP_SERVER_VERSION,
+    mcpServerDescription: env.MCP_SERVER_DESCRIPTION,
+  };
 
-const env = parsedEnv.data;
+  // Use a temporary schema to parse package info and provide defaults
+  const pkgSchema = z.object({
+    name: z.string(),
+    version: z.string(),
+    description: z.string().optional(),
+  });
+  const parsedPkg = pkgSchema.parse(rawConfig.pkg);
 
-const ensureDirectory = (
-  dirPath: string,
-  rootDir: string,
-  dirName: string,
-): string | null => {
-  const resolvedDirPath = path.isAbsolute(dirPath)
-    ? dirPath
-    : path.resolve(rootDir, dirPath);
-  if (
-    !resolvedDirPath.startsWith(rootDir + path.sep) &&
-    resolvedDirPath !== rootDir
-  ) {
-    console.error(`Error: ${dirName} path is outside the project boundary.`);
-    return null;
-  }
-  if (!existsSync(resolvedDirPath)) {
-    try {
-      mkdirSync(resolvedDirPath, { recursive: true });
-    } catch (err: any) {
-      console.error(`Error creating ${dirName} directory: ${err.message}`);
-      return null;
+  // Now add the derived values to the main rawConfig object to be parsed
+  const finalRawConfig = {
+    ...rawConfig,
+    pkg: parsedPkg,
+    logsPath: rawConfig.logsPath ?? (hasFileSystemAccess ? 'logs' : undefined),
+    mcpServerName: env.MCP_SERVER_NAME ?? parsedPkg.name,
+    mcpServerVersion: env.MCP_SERVER_VERSION ?? parsedPkg.version,
+    mcpServerDescription: env.MCP_SERVER_DESCRIPTION ?? parsedPkg.description,
+    openTelemetry: {
+      ...rawConfig.openTelemetry,
+      serviceName: env.OTEL_SERVICE_NAME ?? parsedPkg.name,
+      serviceVersion: env.OTEL_SERVICE_VERSION ?? parsedPkg.version,
+    },
+    openrouterAppName: env.OPENROUTER_APP_NAME ?? parsedPkg.name,
+  };
+
+  const parsedConfig = ConfigSchema.safeParse(finalRawConfig);
+
+  if (!parsedConfig.success) {
+    // Keep existing TTY error logging for developer convenience.
+    if (process.stdout.isTTY) {
+      console.error(
+        '❌ Invalid configuration found. Please check your environment variables.',
+        parsedConfig.error.flatten().fieldErrors,
+      );
     }
-  } else if (!statSync(resolvedDirPath).isDirectory()) {
-    console.error(`Error: ${dirName} path exists but is not a directory.`);
-    return null;
+    // Throw a specific, typed error instead of exiting.
+    throw new McpError(
+      JsonRpcErrorCode.ConfigurationError,
+      'Invalid application configuration.',
+      {
+        validationErrors: parsedConfig.error.flatten().fieldErrors,
+      },
+    );
   }
-  return resolvedDirPath;
+
+  return parsedConfig.data;
 };
 
-const validatedLogsPath = ensureDirectory(env.LOGS_DIR, projectRoot, "logs");
+const config = parseConfig();
 
-if (!validatedLogsPath) {
-  console.error("FATAL: Logs directory is invalid. Exiting.");
-  process.exit(1);
-}
+/**
+ * Export the runtime configuration, parser, and schema, plus a static AppConfig type.
+ */
+export type AppConfig = z.infer<typeof ConfigSchema>;
 
-export const config = {
-  pkg,
-  mcpServerName: env.MCP_SERVER_NAME || pkg.name,
-  mcpServerVersion: env.MCP_SERVER_VERSION || pkg.version,
-  logLevel: env.MCP_LOG_LEVEL,
-  logsPath: validatedLogsPath,
-  environment: env.NODE_ENV,
-  mcpTransportType: env.MCP_TRANSPORT_TYPE,
-  mcpSessionMode: env.MCP_SESSION_MODE,
-  mcpHttpPort: env.MCP_HTTP_PORT,
-  mcpHttpHost: env.MCP_HTTP_HOST,
-  mcpHttpEndpointPath: env.MCP_HTTP_ENDPOINT_PATH,
-  mcpHttpMaxPortRetries: env.MCP_HTTP_MAX_PORT_RETRIES,
-  mcpHttpPortRetryDelayMs: env.MCP_HTTP_PORT_RETRY_DELAY_MS,
-  mcpStatefulSessionStaleTimeoutMs: env.MCP_STATEFUL_SESSION_STALE_TIMEOUT_MS,
-  mcpAllowedOrigins: env.MCP_ALLOWED_ORIGINS?.split(",").map((o) => o.trim()),
-  mcpAuthSecretKey: env.MCP_AUTH_SECRET_KEY,
-  mcpAuthMode: env.MCP_AUTH_MODE,
-  oauthIssuerUrl: env.OAUTH_ISSUER_URL,
-  oauthJwksUri: env.OAUTH_JWKS_URI,
-  oauthAudience: env.OAUTH_AUDIENCE,
-  devMcpClientId: env.DEV_MCP_CLIENT_ID,
-  devMcpScopes: env.DEV_MCP_SCOPES?.split(",").map((s) => s.trim()),
-  obsidianApiKey: env.OBSIDIAN_API_KEY,
-  obsidianBaseUrl: env.OBSIDIAN_BASE_URL,
-  obsidianVerifySsl: env.OBSIDIAN_VERIFY_SSL,
-  obsidianCacheRefreshIntervalMin: env.OBSIDIAN_CACHE_REFRESH_INTERVAL_MIN,
-  obsidianEnableCache: env.OBSIDIAN_ENABLE_CACHE,
-  obsidianApiSearchTimeoutMs: env.OBSIDIAN_API_SEARCH_TIMEOUT_MS,
-  obsidianCacheContentMaxItems: env.OBSIDIAN_CACHE_CONTENT_MAX_ITEMS,
-  obsidianCacheContentTtlSeconds: env.OBSIDIAN_CACHE_CONTENT_TTL_SECONDS,
-  obsidianCacheRefreshConcurrency: env.OBSIDIAN_CACHE_REFRESH_CONCURRENCY,
-  obsidianCacheRepairEnabled: env.OBSIDIAN_CACHE_REPAIR_ENABLED,
-  obsidianCacheRepairDryRun: env.OBSIDIAN_CACHE_REPAIR_DRY_RUN,
-  obsidianCacheMaxRepairsPerRun: env.OBSIDIAN_CACHE_MAX_REPAIRS_PER_RUN,
-  obsidianCacheNormalizeTagsToLowercase:
-    env.OBSIDIAN_CACHE_NORMALIZE_TAGS_TO_LOWERCASE,
-  security: {
-    authRequired: env.MCP_AUTH_MODE !== "none",
-  },
-};
-
-export const logLevel = config.logLevel;
-export const environment = config.environment;
+export { config, ConfigSchema, parseConfig };

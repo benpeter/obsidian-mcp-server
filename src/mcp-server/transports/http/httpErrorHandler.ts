@@ -3,64 +3,92 @@
  * This middleware intercepts errors that occur during request processing,
  * standardizes them using the application's ErrorHandler utility, and
  * formats them into a consistent JSON-RPC error response.
- * @module src/mcp-server/transports/httpErrorHandler
+ * @module src/mcp-server/transports/http/httpErrorHandler
  */
+import type { Context } from 'hono';
+import type { StatusCode } from 'hono/utils/http-status';
 
-import { Context } from "hono";
-import { StatusCode } from "hono/utils/http-status";
-import { BaseErrorCode, McpError } from "../../../types-global/errors.js";
+import { config } from '@/config/index.js';
+import type { HonoNodeBindings } from '@/mcp-server/transports/http/httpTypes.js';
+import { JsonRpcErrorCode, McpError } from '@/types-global/errors.js';
 import {
   ErrorHandler,
   logger,
   requestContextService,
-} from "../../../utils/index.js";
-import { HonoNodeBindings } from "./httpTypes.js";
+  getProperty,
+} from '@/utils/index.js';
 
 /**
  * A centralized error handling middleware for Hono.
  * This function is registered with `app.onError()` and will catch any errors
  * thrown from preceding middleware or route handlers.
  *
+ * Generic to support different binding types (Node.js, Cloudflare Workers, etc).
+ *
+ * @template TBindings - The Hono binding type (defaults to HonoNodeBindings)
  * @param err - The error that was thrown.
  * @param c - The Hono context object for the request.
  * @returns A Response object containing the formatted JSON-RPC error.
  */
-export const httpErrorHandler = async (
+export const httpErrorHandler = async <
+  TBindings extends object = HonoNodeBindings,
+>(
   err: Error,
-  c: Context<{ Bindings: HonoNodeBindings }>,
+  c: Context<{ Bindings: TBindings }>,
 ): Promise<Response> => {
   const context = requestContextService.createRequestContext({
-    operation: "httpErrorHandler",
-    path: c.req.path,
-    method: c.req.method,
+    operation: 'httpErrorHandler',
+    additionalContext: {
+      path: c.req.path,
+      method: c.req.method,
+    },
   });
-  logger.debug("HTTP error handler invoked.", context);
+  logger.debug('HTTP error handler invoked.', context);
 
   const handledError = ErrorHandler.handleError(err, {
-    operation: "httpTransport",
+    operation: 'httpTransport',
     context,
   });
 
   let status: StatusCode = 500;
   if (handledError instanceof McpError) {
     switch (handledError.code) {
-      case BaseErrorCode.NOT_FOUND:
+      case JsonRpcErrorCode.NotFound:
         status = 404;
         break;
-      case BaseErrorCode.UNAUTHORIZED:
+      case JsonRpcErrorCode.Unauthorized:
         status = 401;
+        // MCP Spec 2025-06-18: Add WWW-Authenticate header per RFC 9728 Section 5.1
+        // https://datatracker.ietf.org/doc/html/rfc9728#section-5.1
+        if (config.oauthIssuerUrl) {
+          const origin = new URL(c.req.url).origin;
+          const resourceMetadataUrl = `${origin}/.well-known/oauth-protected-resource`;
+
+          // Build WWW-Authenticate header per RFC 9728
+          const wwwAuthValue = [
+            `Bearer realm="${config.mcpServerName}"`,
+            `resource_metadata="${resourceMetadataUrl}"`,
+          ].join(', ');
+
+          c.header('WWW-Authenticate', wwwAuthValue);
+
+          logger.debug('Added WWW-Authenticate header for 401 response', {
+            ...context,
+            resourceMetadataUrl,
+          });
+        }
         break;
-      case BaseErrorCode.FORBIDDEN:
+      case JsonRpcErrorCode.Forbidden:
         status = 403;
         break;
-      case BaseErrorCode.VALIDATION_ERROR:
-      case BaseErrorCode.INVALID_INPUT:
+      case JsonRpcErrorCode.ValidationError:
+      case JsonRpcErrorCode.InvalidRequest:
         status = 400;
         break;
-      case BaseErrorCode.CONFLICT:
+      case JsonRpcErrorCode.Conflict:
         status = 409;
         break;
-      case BaseErrorCode.RATE_LIMITED:
+      case JsonRpcErrorCode.RateLimited:
         status = 429;
         break;
       default:
@@ -78,22 +106,23 @@ export const httpErrorHandler = async (
   // Only attempt to read the body if it hasn't been consumed already.
   if (c.req.raw.bodyUsed === false) {
     try {
-      const body = await c.req.json();
-      requestId = body?.id || null;
-      logger.debug("Extracted JSON-RPC request ID from body.", {
+      const body: unknown = await c.req.json();
+      const id = getProperty(body, 'id');
+      requestId = typeof id === 'string' || typeof id === 'number' ? id : null;
+      logger.debug('Extracted JSON-RPC request ID from body.', {
         ...context,
         jsonRpcId: requestId,
       });
     } catch {
       logger.warning(
-        "Could not parse request body to extract JSON-RPC ID.",
+        'Could not parse request body to extract JSON-RPC ID.',
         context,
       );
       // Ignore parsing errors, requestId will remain null
     }
   } else {
     logger.debug(
-      "Request body already consumed, cannot extract JSON-RPC ID.",
+      'Request body already consumed, cannot extract JSON-RPC ID.',
       context,
     );
   }
@@ -103,7 +132,7 @@ export const httpErrorHandler = async (
 
   c.status(status);
   const errorResponse = {
-    jsonrpc: "2.0",
+    jsonrpc: '2.0',
     error: {
       code: errorCode,
       message: handledError.message,

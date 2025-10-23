@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * @fileoverview Utility script to clean build artifacts and temporary directories.
  * @module scripts/clean
@@ -11,18 +10,17 @@
  * // Add to package.json:
  * // "scripts": {
  * //   "clean": "ts-node --esm scripts/clean.ts",
- * //   "rebuild": "npm run clean && npm run build"
+ * //   "rebuild": "bun run clean && bun run build"
  * // }
  *
  * // Run with default directories:
- * // npm run clean
+ * // bun run clean
  *
  * // Run with custom directories:
  * // ts-node --esm scripts/clean.ts temp coverage
  */
-
-import { rm, access } from "fs/promises";
-import { join } from "path";
+import { access, rm } from 'fs/promises';
+import { join } from 'path';
 
 /**
  * Represents the result of a clean operation for a single directory.
@@ -32,7 +30,7 @@ import { join } from "path";
  */
 interface CleanResult {
   dir: string;
-  status: "success" | "skipped";
+  status: 'success' | 'skipped';
   reason?: string;
 }
 
@@ -57,39 +55,34 @@ async function directoryExists(dirPath: string): Promise<boolean> {
  */
 const clean = async (): Promise<void> => {
   try {
-    let dirsToClean: string[] = ["dist", "logs"];
+    let dirsToClean: string[] = ['dist', 'logs'];
     const args = process.argv.slice(2);
 
     if (args.length > 0) {
       dirsToClean = args;
     }
 
-    console.log(`Attempting to clean directories: ${dirsToClean.join(", ")}`);
+    console.log(`Attempting to clean directories: ${dirsToClean.join(', ')}`);
 
     const results = await Promise.allSettled(
       dirsToClean.map(async (dir): Promise<CleanResult> => {
         const dirPath = join(process.cwd(), dir);
 
-        try {
-          const exists = await directoryExists(dirPath);
+        const exists = await directoryExists(dirPath);
 
-          if (!exists) {
-            return { dir, status: "skipped", reason: "does not exist" };
-          }
-
-          await rm(dirPath, { recursive: true, force: true });
-          return { dir, status: "success" };
-        } catch (error) {
-          // Rethrow to be caught by Promise.allSettled's rejection case
-          throw error;
+        if (!exists) {
+          return { dir, status: 'skipped', reason: 'does not exist' };
         }
+
+        await rm(dirPath, { recursive: true, force: true });
+        return { dir, status: 'success' };
       }),
     );
 
     results.forEach((result) => {
-      if (result.status === "fulfilled") {
+      if (result.status === 'fulfilled') {
         const { dir, status, reason } = result.value;
-        if (status === "success") {
+        if (status === 'success') {
           console.log(`Successfully cleaned directory: ${dir}`);
         } else {
           console.log(`Skipped cleaning directory ${dir}: ${reason}.`);
@@ -102,13 +95,14 @@ const clean = async (): Promise<void> => {
         );
       }
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error(
-      "An unexpected error occurred during the clean script execution:",
+      'An unexpected error occurred during the clean script execution:',
       error instanceof Error ? error.message : error,
     );
     process.exit(1);
   }
 };
 
-clean();
+// Intentionally not awaiting; internal try/catch handles errors.
+void clean();

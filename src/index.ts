@@ -1,205 +1,221 @@
 #!/usr/bin/env node
+/**
+ * @fileoverview Main entry point for the MCP TypeScript Template application.
+ * This script initializes the configuration, sets up the logger, starts the
+ * MCP server (either via STDIO or HTTP transport), and handles graceful
+ * shutdown on process signals or unhandled errors.
+ * @module src/index
+ */
 
-import "./utils/internal/fetch.js"; // Apply global fetch dispatcher
-import { ServerType } from "@hono/node-server";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { config, environment } from "./config/index.js";
-import { initializeAndStartServer } from "./mcp-server/server.js";
-import { requestContextService, retryWithDelay } from "./utils/index.js";
-import { logger, McpLogLevel } from "./utils/internal/logger.js";
-import { ObsidianRestApiService } from "./services/obsidianRestAPI/index.js";
-import { VaultCacheService } from "./services/obsidianRestAPI/vaultCache/index.js";
+// CRITICAL: Disable ANSI color codes BEFORE any imports when running via MCP clients.
+// The MCP specification requires clean output. Even in HTTP mode, if launched via
+// bunx/npx by an MCP client, colored output pollutes the client's process streams.
+// This must be set before pino-pretty or any other library loads.
+//
+// We disable colors in these scenarios:
+// 1. STDIO mode (always - MCP JSON-RPC on stdout)
+// 2. HTTP mode when NOT in TTY (likely launched by MCP client via bunx/npx)
+// 3. When explicitly disabled via existing NO_COLOR env var
+const transportType = process.env.MCP_TRANSPORT_TYPE?.toLowerCase();
+const isStdioMode = !transportType || transportType === 'stdio';
+const isHttpModeWithoutTty = transportType === 'http' && !process.stdout.isTTY;
 
-let server: McpServer | undefined;
-let httpServerInstance: ServerType | undefined;
-let obsidianService: ObsidianRestApiService | undefined;
-let vaultCacheService: VaultCacheService | undefined;
+if (isStdioMode || isHttpModeWithoutTty) {
+  process.env.NO_COLOR = '1'; // Standard env var that most libraries respect
+  process.env.FORCE_COLOR = '0'; // Disable forced coloring
+}
 
-const shutdown = async (signal: string) => {
+import {
+  initializeOpenTelemetry,
+  shutdownOpenTelemetry,
+} from '@/utils/telemetry/instrumentation.js';
+import 'reflect-metadata';
+
+import {
+  initializePerformance_Hrt,
+  requestContextService,
+} from '@/utils/index.js';
+import { type McpLogLevel, logger } from '@/utils/internal/logger.js';
+
+import { config as appConfigType } from '@/config/index.js';
+import container, {
+  AppConfig,
+  TransportManagerToken,
+  composeContainer,
+} from '@/container/index.js';
+import { TransportManager } from '@/mcp-server/transports/manager.js';
+
+// The container is now composed in start(), so we must resolve config there.
+let config: typeof appConfigType;
+let transportManager: TransportManager;
+let isShuttingDown = false;
+
+const shutdown = async (signal: string): Promise<void> => {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
   const shutdownContext = requestContextService.createRequestContext({
-    operation: "Shutdown",
-    signal,
+    operation: 'ServerShutdown',
+    triggerEvent: signal,
   });
 
   logger.info(
-    `Received ${signal}. Starting graceful shutdown...`,
+    `Received ${signal}. Initiating graceful shutdown...`,
     shutdownContext,
   );
 
   try {
-    if (config.obsidianEnableCache && vaultCacheService) {
-      vaultCacheService.stopPeriodicRefresh();
+    if (transportManager) {
+      await transportManager.stop(signal);
     }
 
-    if (server) {
-      await server.close();
-      logger.info(
-        "Main MCP server (stdio) closed successfully",
-        shutdownContext,
-      );
-    }
+    logger.info(
+      'Graceful shutdown completed successfully. Exiting.',
+      shutdownContext,
+    );
 
-    if (httpServerInstance) {
-      await new Promise<void>((resolve, reject) => {
-        httpServerInstance!.close((err?: Error) => {
-          if (err) {
-            logger.error("Error closing HTTP server", err, shutdownContext);
-            reject(err);
-            return;
-          }
-          resolve();
-        });
-      });
-      logger.info("Main HTTP server closed successfully", shutdownContext);
-    }
+    // Shutdown OpenTelemetry and logger last to ensure all telemetry and logs are sent.
+    await shutdownOpenTelemetry();
+    await logger.close();
 
-    logger.info("Graceful shutdown completed successfully", shutdownContext);
     process.exit(0);
-  } catch (error) {
+  } catch (error: unknown) {
     logger.error(
-      "Critical error during shutdown",
+      'Critical error during shutdown process.',
       error as Error,
       shutdownContext,
     );
+    try {
+      await logger.close();
+    } catch (_e) {
+      // Ignore errors during final logger close attempt
+    }
     process.exit(1);
   }
 };
 
-const start = async () => {
+const start = async (): Promise<void> => {
+  try {
+    // Initialize DI container first
+    composeContainer();
+    // Now it's safe to resolve dependencies
+    config = container.resolve<typeof appConfigType>(AppConfig);
+  } catch (_error) {
+    // This will catch the McpError from parseConfig
+    if (process.stdout.isTTY) {
+      // The config module already logged the details. We just provide a final message.
+      console.error('Halting due to critical configuration error.');
+    }
+    // Ensure OpenTelemetry is shut down if it was started before the error
+    await shutdownOpenTelemetry();
+    process.exit(1);
+  }
+
+  // Initialize OpenTelemetry before logger to capture all spans
+  // This must happen before logger initialization for proper instrumentation
+  try {
+    await initializeOpenTelemetry();
+  } catch (error: unknown) {
+    // Observability failure should not block startup
+    console.error('[Startup] Failed to initialize OpenTelemetry:', error);
+    // Continue - application can run without telemetry
+  }
+
+  // Initialize the high-resolution timer
+  await initializePerformance_Hrt();
+
   const validMcpLogLevels: McpLogLevel[] = [
-    "debug",
-    "info",
-    "notice",
-    "warning",
-    "error",
-    "crit",
-    "alert",
-    "emerg",
+    'debug',
+    'info',
+    'notice',
+    'warning',
+    'error',
+    'crit',
+    'alert',
+    'emerg',
   ];
   const initialLogLevelConfig = config.logLevel;
-  let validatedMcpLogLevel: McpLogLevel = "info";
+
+  let validatedMcpLogLevel: McpLogLevel = 'info';
   if (validMcpLogLevels.includes(initialLogLevelConfig as McpLogLevel)) {
     validatedMcpLogLevel = initialLogLevelConfig as McpLogLevel;
   } else {
-    console.warn(
-      `Invalid MCP_LOG_LEVEL "${initialLogLevelConfig}". Defaulting to "info".`,
-    );
+    if (process.stdout.isTTY) {
+      console.warn(
+        `[Startup Warning] Invalid MCP_LOG_LEVEL "${initialLogLevelConfig}". Defaulting to "info".`,
+      );
+    }
   }
-  await logger.initialize(validatedMcpLogLevel);
 
-  const transportType = config.mcpTransportType;
+  // Pass transport type to logger to ensure STDIO mode uses plain JSON (no ANSI colors)
+  await logger.initialize(validatedMcpLogLevel, config.mcpTransportType);
+
+  // Storage Service is now initialized in the container
+  logger.info(
+    `Storage service initialized with provider: ${config.storage.providerType}`,
+    requestContextService.createRequestContext({ operation: 'StorageInit' }),
+  );
+
+  transportManager = container.resolve<TransportManager>(TransportManagerToken);
+
   const startupContext = requestContextService.createRequestContext({
-    operation: `ServerStartup_${transportType}`,
-    appName: config.mcpServerName,
-    appVersion: config.mcpServerVersion,
-    environment: environment,
+    operation: 'ServerStartup',
+    applicationName: config.mcpServerName,
+    applicationVersion: config.mcpServerVersion,
+    nodeEnvironment: config.environment,
   });
 
   logger.info(
-    `Starting ${config.mcpServerName} v${config.mcpServerVersion} (Transport: ${transportType})...`,
+    `Starting ${config.mcpServerName} (v${config.mcpServerVersion})...`,
     startupContext,
   );
 
   try {
-    obsidianService = new ObsidianRestApiService();
+    await transportManager.start();
 
-    if (config.obsidianEnableCache) {
-      vaultCacheService = new VaultCacheService(obsidianService);
-      obsidianService.setVaultCacheService(vaultCacheService);
-      logger.info("Vault cache is enabled.", startupContext);
-    }
-
-    try {
-      logger.info(
-        "Performing initial Obsidian API status check...",
-        startupContext,
-      );
-      const status = await retryWithDelay(
-        async () => {
-          const currentStatus =
-            await obsidianService!.checkStatus(startupContext);
-          if (
-            currentStatus?.service !== "Obsidian Local REST API" ||
-            !currentStatus?.authenticated
-          ) {
-            throw new Error(
-              `Obsidian API status check failed. Status: ${JSON.stringify(currentStatus)}`,
-            );
-          }
-          return currentStatus;
-        },
-        {
-          operationName: "initialObsidianApiCheck",
-          context: startupContext,
-          maxRetries: 5,
-          delayMs: 3000,
-        },
-      );
-      logger.info("Obsidian API status check successful.", {
-        ...startupContext,
-        versions: status.versions,
-      });
-    } catch (statusError) {
-      logger.error("Critical error during Obsidian API status check.", {
-        ...startupContext,
-        error: (statusError as Error).message,
-      });
-      throw statusError;
-    }
-
-    const serverOrHttpInstance = await initializeAndStartServer(
-      obsidianService,
-      vaultCacheService,
+    logger.info(
+      `${config.mcpServerName} is now running and ready.`,
+      startupContext,
     );
 
-    if (
-      transportType === "stdio" &&
-      serverOrHttpInstance instanceof McpServer
-    ) {
-      server = serverOrHttpInstance;
-    } else if (transportType === "http") {
-      httpServerInstance = serverOrHttpInstance as ServerType;
-    }
-
-    logger.info(`${config.mcpServerName} is running.`, startupContext);
-
-    if (config.obsidianEnableCache && vaultCacheService) {
-      logger.info("Triggering background vault cache build...", startupContext);
-      vaultCacheService
-        .buildVaultCache()
-        .then(() => vaultCacheService?.startPeriodicRefresh())
-        .catch((cacheBuildError) =>
-          logger.error("Error during background cache build", {
-            ...startupContext,
-            error: (cacheBuildError as Error).message,
-          }),
-        );
-    }
-
-    process.on("SIGTERM", () => shutdown("SIGTERM"));
-    process.on("SIGINT", () => shutdown("SIGINT"));
-    process.on("uncaughtException", (error) => {
-      logger.error("Uncaught exception.", {
-        ...startupContext,
-        error: error.message,
-        stack: error.stack,
-      });
-      shutdown("uncaughtException");
+    process.on('SIGTERM', () => void shutdown('SIGTERM'));
+    process.on('SIGINT', () => void shutdown('SIGINT'));
+    process.on('uncaughtException', (error: Error) => {
+      logger.fatal(
+        'FATAL: Uncaught exception detected.',
+        error,
+        startupContext,
+      );
+      void shutdown('uncaughtException');
     });
-    process.on("unhandledRejection", (reason) => {
-      logger.error("Unhandled promise rejection.", {
-        ...startupContext,
-        reason: reason as string,
-      });
-      shutdown("unhandledRejection");
+    process.on('unhandledRejection', (reason: unknown) => {
+      logger.fatal(
+        'FATAL: Unhandled promise rejection detected.',
+        reason as Error,
+        startupContext,
+      );
+      void shutdown('unhandledRejection');
     });
-  } catch (error) {
-    logger.error("Critical error during startup, exiting.", {
-      ...startupContext,
-      error: (error as Error).message,
-    });
+  } catch (error: unknown) {
+    logger.fatal(
+      'CRITICAL ERROR DURING STARTUP.',
+      error as Error,
+      startupContext,
+    );
+    await shutdownOpenTelemetry(); // Attempt to flush any startup-related traces
     process.exit(1);
   }
 };
 
-start();
+void (async () => {
+  try {
+    await start();
+  } catch (error: unknown) {
+    if (process.stdout.isTTY) {
+      console.error('[GLOBAL CATCH] A fatal, unhandled error occurred:', error);
+    }
+    process.exit(1);
+  }
+})();
