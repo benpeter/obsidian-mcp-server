@@ -154,17 +154,18 @@ See Section IV for full workflow, Section XIV for comprehensive checklist.
 
 #### DI-Managed Services (tokens in `src/container/tokens.ts`)
 
-| Service           | Token                   | Usage                                                                   | Notes                          |
-| ----------------- | ----------------------- | ----------------------------------------------------------------------- | ------------------------------ |
-| `ILlmProvider`    | `LlmProvider`           | `@inject(LlmProvider) private llmProvider: ILlmProvider`                |                                |
-| `IGraphProvider`  | `GraphProvider`         | `@inject(GraphProvider) private graphProvider: IGraphProvider`          | Only when using graph features |
-| `StorageService`  | `StorageService`        | `@inject(StorageService) private storage: StorageService`               | Requires `context.tenantId`    |
-| `RateLimiter`     | `RateLimiterService`    | `@inject(RateLimiterService) private rateLimiter: RateLimiter`          |                                |
-| `Logger`          | `Logger`                | `@inject(Logger) private logger: typeof logger`                         | Pino-backed singleton          |
-| App Config        | `AppConfig`             | `@inject(AppConfig) private config: typeof configModule`                |                                |
-| Supabase Client   | `SupabaseAdminClient`   | `@inject(SupabaseAdminClient) private client: SupabaseClient<Database>` | Only when needed               |
-| SurrealDB Client  | `SurrealdbClient`       | `@inject(SurrealdbClient) private client: Surreal`                      | Only when needed               |
-| Transport Manager | `TransportManagerToken` | `@inject(TransportManagerToken) private tm: TransportManager`           |                                |
+| Service             | Token                   | Usage                                                                   | Notes                          |
+| ------------------- | ----------------------- | ----------------------------------------------------------------------- | ------------------------------ |
+| `ILlmProvider`      | `LlmProvider`           | `@inject(LlmProvider) private llmProvider: ILlmProvider`                |                                |
+| `IGraphProvider`    | `GraphProvider`         | `@inject(GraphProvider) private graphProvider: IGraphProvider`          | Only when using graph features |
+| `IObsidianProvider` | `ObsidianProvider`      | `@inject(ObsidianProvider) private obsidianProvider: IObsidianProvider` | Only when using Obsidian       |
+| `StorageService`    | `StorageService`        | `@inject(StorageService) private storage: StorageService`               | Requires `context.tenantId`    |
+| `RateLimiter`       | `RateLimiterService`    | `@inject(RateLimiterService) private rateLimiter: RateLimiter`          |                                |
+| `Logger`            | `Logger`                | `@inject(Logger) private logger: typeof logger`                         | Pino-backed singleton          |
+| App Config          | `AppConfig`             | `@inject(AppConfig) private config: typeof configModule`                |                                |
+| Supabase Client     | `SupabaseAdminClient`   | `@inject(SupabaseAdminClient) private client: SupabaseClient<Database>` | Only when needed               |
+| SurrealDB Client    | `SurrealdbClient`       | `@inject(SurrealdbClient) private client: Surreal`                      | Only when needed               |
+| Transport Manager   | `TransportManagerToken` | `@inject(TransportManagerToken) private tm: TransportManager`           |                                |
 
 **Graph Service:** Graph operations (relationships, traversals, pathfinding) via SurrealDB. Inject `IGraphProvider`. Operations: `relate()`, `unrelate()`, `traverse()`, `shortestPath()`, `get{Outgoing|Incoming}Edges()`, `pathExists()`.
 
@@ -274,6 +275,7 @@ All config validated via Zod in `src/config/index.ts`. Derives `serviceName`/`ve
 | **Auth**      | `MCP_AUTH_MODE` (`none`\|`jwt`\|`oauth`), `MCP_AUTH_SECRET_KEY`, `OAUTH_*`                                      |
 | **Storage**   | `STORAGE_PROVIDER_TYPE` (`in-memory`\|`filesystem`\|`supabase`\|`surrealdb`\|`cloudflare-r2/kv`), `SURREALDB_*` |
 | **LLM**       | `OPENROUTER_API_KEY`, `OPENROUTER_APP_URL/NAME`, `LLM_DEFAULT_*`                                                |
+| **Obsidian**  | `OBSIDIAN_API_URL`, `OBSIDIAN_API_TOKEN`, `OBSIDIAN_CERT_VALIDATION`                                            |
 | **Telemetry** | `OTEL_ENABLED`, `OTEL_SERVICE_NAME/VERSION`, `OTEL_EXPORTER_OTLP_*`                                             |
 
 ---

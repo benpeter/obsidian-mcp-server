@@ -1,6 +1,6 @@
 # obsidian-mcp-server - Directory Structure
 
-Generated on: 2025-10-23 17:18:48
+Generated on: 2025-10-23 22:52:20
 
 ```
 obsidian-mcp-server
@@ -16,8 +16,6 @@ obsidian-mcp-server
 ├── .vscode
 │   └── settings.json
 ├── changelog
-│   ├── archive1.md
-│   └── archive2.md
 ├── coverage
 │   ├── src
 │   │   ├── config
@@ -280,10 +278,9 @@ obsidian-mcp-server
 │   │           ├── pagination.md
 │   │           ├── ping.md
 │   │           └── progress.md
-│   ├── mcp-elicitation-summary.md
-│   ├── publishing-mcp-server-registry.md
-│   ├── storage-surrealdb-setup.md
-│   ├── surrealdb-schema.surql
+│   ├── obsidian
+│   │   ├── implementation-plan.md
+│   │   └── obsidian-mcp-server.md
 │   └── tree.md
 ├── schemas
 │   ├── surrealdb
@@ -333,11 +330,25 @@ obsidian-mcp-server
 │   │   ├── tools
 │   │   │   ├── definitions
 │   │   │   │   ├── index.ts
-│   │   │   │   ├── template-cat-fact.tool.ts
-│   │   │   │   ├── template-code-review-sampling.tool.ts
-│   │   │   │   ├── template-echo-message.tool.ts
-│   │   │   │   ├── template-image-test.tool.ts
-│   │   │   │   └── template-madlibs-elicitation.tool.ts
+│   │   │   │   ├── obsidian-append-active-note.tool.ts
+│   │   │   │   ├── obsidian-append-note.tool.ts
+│   │   │   │   ├── obsidian-append-periodic-note.tool.ts
+│   │   │   │   ├── obsidian-create-note.tool.ts
+│   │   │   │   ├── obsidian-delete-note.tool.ts
+│   │   │   │   ├── obsidian-execute-command.tool.ts
+│   │   │   │   ├── obsidian-get-active-note.tool.ts
+│   │   │   │   ├── obsidian-get-note.tool.ts
+│   │   │   │   ├── obsidian-get-periodic-note.tool.ts
+│   │   │   │   ├── obsidian-list-commands.tool.ts
+│   │   │   │   ├── obsidian-list-vault-files.tool.ts
+│   │   │   │   ├── obsidian-open-note.tool.ts
+│   │   │   │   ├── obsidian-patch-active-note.tool.ts
+│   │   │   │   ├── obsidian-patch-note.tool.ts
+│   │   │   │   ├── obsidian-patch-periodic-note.tool.ts
+│   │   │   │   ├── obsidian-search-dataview.tool.ts
+│   │   │   │   ├── obsidian-search-jsonlogic.tool.ts
+│   │   │   │   ├── obsidian-search-simple.tool.ts
+│   │   │   │   └── obsidian-update-active-note.tool.ts
 │   │   │   ├── utils
 │   │   │   │   ├── index.ts
 │   │   │   │   ├── toolDefinition.ts
@@ -385,6 +396,30 @@ obsidian-mcp-server
 │   │   │   │   └── ILlmProvider.ts
 │   │   │   ├── providers
 │   │   │   │   └── openrouter.provider.ts
+│   │   │   ├── index.ts
+│   │   │   └── types.ts
+│   │   ├── obsidian
+│   │   │   ├── core
+│   │   │   │   ├── IObsidianProvider.ts
+│   │   │   │   └── ObsidianClient.ts
+│   │   │   ├── providers
+│   │   │   │   ├── operations
+│   │   │   │   │   ├── command-operations.ts
+│   │   │   │   │   ├── index.ts
+│   │   │   │   │   ├── note-operations.ts
+│   │   │   │   │   ├── periodic-operations.ts
+│   │   │   │   │   └── search-operations.ts
+│   │   │   │   ├── shared
+│   │   │   │   │   ├── operation-base.ts
+│   │   │   │   │   └── types.ts
+│   │   │   │   └── obsidian-rest.provider.ts
+│   │   │   ├── types
+│   │   │   │   └── obsidian-api.ts
+│   │   │   ├── utils
+│   │   │   │   ├── error-mapper.ts
+│   │   │   │   ├── markdown-parser.ts
+│   │   │   │   ├── path-normalizer.ts
+│   │   │   │   └── response-mapper.ts
 │   │   │   ├── index.ts
 │   │   │   └── types.ts
 │   │   ├── speech
@@ -545,11 +580,25 @@ obsidian-mcp-server
 │   │   ├── tools
 │   │   │   ├── definitions
 │   │   │   │   ├── index.test.ts
-│   │   │   │   ├── template-cat-fact.tool.test.ts
-│   │   │   │   ├── template-code-review-sampling.tool.test.ts
-│   │   │   │   ├── template-echo-message.tool.test.ts
-│   │   │   │   ├── template-image-test.tool.test.ts
-│   │   │   │   └── template-madlibs-elicitation.tool.test.ts
+│   │   │   │   ├── obsidian-append-active-note.tool.test.ts
+│   │   │   │   ├── obsidian-append-note.tool.test.ts
+│   │   │   │   ├── obsidian-append-periodic-note.tool.test.ts
+│   │   │   │   ├── obsidian-create-note.tool.test.ts
+│   │   │   │   ├── obsidian-delete-note.tool.test.ts
+│   │   │   │   ├── obsidian-execute-command.tool.test.ts
+│   │   │   │   ├── obsidian-get-active-note.tool.test.ts
+│   │   │   │   ├── obsidian-get-note.tool.test.ts
+│   │   │   │   ├── obsidian-get-periodic-note.tool.test.ts
+│   │   │   │   ├── obsidian-list-commands.tool.test.ts
+│   │   │   │   ├── obsidian-list-vault-files.tool.test.ts
+│   │   │   │   ├── obsidian-open-note.tool.test.ts
+│   │   │   │   ├── obsidian-patch-active-note.tool.test.ts
+│   │   │   │   ├── obsidian-patch-note.tool.test.ts
+│   │   │   │   ├── obsidian-patch-periodic-note.tool.test.ts
+│   │   │   │   ├── obsidian-search-dataview.tool.test.ts
+│   │   │   │   ├── obsidian-search-jsonlogic.tool.test.ts
+│   │   │   │   ├── obsidian-search-simple.tool.test.ts
+│   │   │   │   └── obsidian-update-active-note.tool.test.ts
 │   │   │   ├── utils
 │   │   │   │   ├── core
 │   │   │   │   ├── index.test.ts

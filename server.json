@@ -1,19 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
-  "name": "io.github.cyanheads/mcp-ts-template",
-  "description": "A production-grade TypeScript template for scalable MCP servers with built-in observability.",
+  "name": "io.github.cyanheads/obsidian-mcp-server",
+  "description": "MCP server for interacting with Obsidian vaults via Local REST API. Provides note operations, search, periodic notes, and command execution.",
   "repository": {
-    "url": "https://github.com/cyanheads/mcp-ts-template",
+    "url": "https://github.com/cyanheads/obsidian-mcp-server",
     "source": "github"
   },
-  "version": "2.5.5",
+  "version": "2.1.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "mcp-ts-template",
+      "identifier": "obsidian-mcp-server",
       "runtimeHint": "bun",
-      "version": "2.5.5",
+      "version": "2.1.0",
       "packageArguments": [
         {
           "type": "positional",
@@ -25,6 +25,26 @@
         }
       ],
       "environmentVariables": [
+        {
+          "name": "OBSIDIAN_API_URL",
+          "description": "Base URL for Obsidian Local REST API (default: https://127.0.0.1:27124).",
+          "format": "string",
+          "isRequired": false,
+          "default": "https://127.0.0.1:27124"
+        },
+        {
+          "name": "OBSIDIAN_API_TOKEN",
+          "description": "API token generated from Obsidian Local REST API plugin settings.",
+          "format": "string",
+          "isRequired": true
+        },
+        {
+          "name": "OBSIDIAN_CERT_VALIDATION",
+          "description": "Enable certificate validation for HTTPS (set to 'false' for self-signed certs).",
+          "format": "string",
+          "isRequired": false,
+          "default": "false"
+        },
         {
           "name": "MCP_LOG_LEVEL",
           "description": "Sets the minimum log level for output (e.g., 'debug', 'info', 'warn').",
@@ -40,9 +60,9 @@
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "mcp-ts-template",
+      "identifier": "obsidian-mcp-server",
       "runtimeHint": "bun",
-      "version": "2.5.5",
+      "version": "2.1.0",
       "packageArguments": [
         {
           "type": "positional",
@@ -54,6 +74,26 @@
         }
       ],
       "environmentVariables": [
+        {
+          "name": "OBSIDIAN_API_URL",
+          "description": "Base URL for Obsidian Local REST API (default: https://127.0.0.1:27124).",
+          "format": "string",
+          "isRequired": false,
+          "default": "https://127.0.0.1:27124"
+        },
+        {
+          "name": "OBSIDIAN_API_TOKEN",
+          "description": "API token generated from Obsidian Local REST API plugin settings.",
+          "format": "string",
+          "isRequired": true
+        },
+        {
+          "name": "OBSIDIAN_CERT_VALIDATION",
+          "description": "Enable certificate validation for HTTPS (set to 'false' for self-signed certs).",
+          "format": "string",
+          "isRequired": false,
+          "default": "false"
+        },
         {
           "name": "MCP_HTTP_HOST",
           "description": "The hostname for the HTTP server.",
