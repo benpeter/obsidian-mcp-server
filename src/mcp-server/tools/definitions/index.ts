@@ -5,19 +5,65 @@
  * @module src/mcp-server/tools/definitions
  */
 
-import { catFactTool } from './template-cat-fact.tool.js';
-import { codeReviewSamplingTool } from './template-code-review-sampling.tool.js';
-import { echoTool } from './template-echo-message.tool.js';
-import { imageTestTool } from './template-image-test.tool.js';
-import { madlibsElicitationTool } from './template-madlibs-elicitation.tool.js';
+// Obsidian tools - Active Note Operations
+import { obsidianAppendActiveNoteTool } from './obsidian-append-active-note.tool.js';
+import { obsidianGetActiveNoteTool } from './obsidian-get-active-note.tool.js';
+import { obsidianPatchActiveNoteTool } from './obsidian-patch-active-note.tool.js';
+import { obsidianUpdateActiveNoteTool } from './obsidian-update-active-note.tool.js';
+
+// Obsidian tools - General Note Operations
+import { obsidianAppendNoteTool } from './obsidian-append-note.tool.js';
+import { obsidianCreateNoteTool } from './obsidian-create-note.tool.js';
+import { obsidianDeleteNoteTool } from './obsidian-delete-note.tool.js';
+import { obsidianGetNoteTool } from './obsidian-get-note.tool.js';
+import { obsidianListVaultFilesTool } from './obsidian-list-vault-files.tool.js';
+import { obsidianPatchNoteTool } from './obsidian-patch-note.tool.js';
+
+// Obsidian tools - Search Operations
+import { obsidianSearchDataviewTool } from './obsidian-search-dataview.tool.js';
+import { obsidianSearchJsonLogicTool } from './obsidian-search-jsonlogic.tool.js';
+import { obsidianSearchSimpleTool } from './obsidian-search-simple.tool.js';
+
+// Obsidian tools - Periodic Note Operations
+import { obsidianAppendPeriodicNoteTool } from './obsidian-append-periodic-note.tool.js';
+import { obsidianGetPeriodicNoteTool } from './obsidian-get-periodic-note.tool.js';
+import { obsidianPatchPeriodicNoteTool } from './obsidian-patch-periodic-note.tool.js';
+
+// Obsidian tools - Commands & UI Operations
+import { obsidianExecuteCommandTool } from './obsidian-execute-command.tool.js';
+import { obsidianListCommandsTool } from './obsidian-list-commands.tool.js';
+import { obsidianOpenNoteTool } from './obsidian-open-note.tool.js';
 
 /**
  * An array containing all tool definitions for easy iteration.
  */
 export const allToolDefinitions = [
-  catFactTool,
-  codeReviewSamplingTool,
-  echoTool,
-  imageTestTool,
-  madlibsElicitationTool,
+  // Obsidian - Active Note Operations
+  obsidianGetActiveNoteTool,
+  obsidianUpdateActiveNoteTool,
+  obsidianAppendActiveNoteTool,
+  obsidianPatchActiveNoteTool,
+
+  // Obsidian - General Note Operations
+  obsidianListVaultFilesTool,
+  obsidianGetNoteTool,
+  obsidianCreateNoteTool,
+  obsidianAppendNoteTool,
+  obsidianPatchNoteTool,
+  obsidianDeleteNoteTool,
+
+  // Obsidian - Search Operations
+  obsidianSearchSimpleTool,
+  obsidianSearchDataviewTool,
+  obsidianSearchJsonLogicTool,
+
+  // Obsidian - Periodic Note Operations
+  obsidianGetPeriodicNoteTool,
+  obsidianAppendPeriodicNoteTool,
+  obsidianPatchPeriodicNoteTool,
+
+  // Obsidian - Commands & UI Operations
+  obsidianListCommandsTool,
+  obsidianExecuteCommandTool,
+  obsidianOpenNoteTool,
 ];

@@ -99,7 +99,7 @@ export class SurrealKvProvider implements IStorageProvider {
     if (!record.expires_at) {
       return false;
     }
-    return new Date(record.expires_at).getTime() < Date.now();
+    return new Date(record.expires_at).getTime() <= Date.now();
   }
 
   async get<T>(

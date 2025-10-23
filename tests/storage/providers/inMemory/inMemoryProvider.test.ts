@@ -18,7 +18,8 @@ describe('InMemoryProvider (unit)', () => {
   let provider: InMemoryProvider;
   const tenantId = 'tenant-a';
 
-  let nowSpy: ReturnType<typeof vi.spyOn> | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let nowSpy: any;
   let now = 0;
 
   beforeEach(() => {

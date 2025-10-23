@@ -31,6 +31,7 @@ export enum JsonRpcErrorCode {
   ConfigurationError = -32008,
   InitializationFailed = -32009,
   DatabaseError = -32010,
+  MethodNotAllowed = -32011, // HTTP 405 - Method not allowed for resource
   SerializationError = -32070, // Data serialization/deserialization failed
   UnknownError = -32099, // A generic fallback
 }

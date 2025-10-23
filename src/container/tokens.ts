@@ -11,6 +11,7 @@ export const Logger = Symbol('Logger');
 export const StorageService = Symbol('StorageService');
 export const StorageProvider = Symbol('IStorageProvider');
 export const LlmProvider = Symbol('ILlmProvider');
+export const ObsidianProvider = Symbol('IObsidianProvider');
 export const ToolDefinitions = Symbol('ToolDefinitions');
 export const ResourceDefinitions = Symbol('ResourceDefinitions');
 export const CreateMcpServerInstance = Symbol('CreateMcpServerInstance');

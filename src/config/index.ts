@@ -232,6 +232,13 @@ const ConfigSchema = z.object({
         .optional(),
     })
     .optional(),
+  obsidian: z
+    .object({
+      apiUrl: z.string().url().default('https://127.0.0.1:27124'),
+      apiToken: z.string().optional(),
+      certValidation: z.coerce.boolean().default(false),
+    })
+    .optional(),
 });
 
 // --- Parsing Logic ---
@@ -348,6 +355,14 @@ const parseConfig = () => {
                   timeout: env.SPEECH_STT_TIMEOUT,
                 }
               : undefined,
+          }
+        : undefined,
+    obsidian:
+      env.OBSIDIAN_API_URL || env.OBSIDIAN_API_TOKEN
+        ? {
+            apiUrl: env.OBSIDIAN_API_URL,
+            apiToken: env.OBSIDIAN_API_TOKEN,
+            certValidation: env.OBSIDIAN_CERT_VALIDATION,
           }
         : undefined,
     // The following fields will be derived and are not directly from env

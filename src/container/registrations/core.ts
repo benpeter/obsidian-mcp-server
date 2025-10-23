@@ -15,6 +15,7 @@ import {
   GraphService,
   LlmProvider,
   Logger,
+  ObsidianProvider,
   RateLimiterService,
   SpeechService,
   StorageProvider,
@@ -26,6 +27,8 @@ import { GraphService as GraphServiceClass } from '@/services/graph/core/GraphSe
 import { SurrealGraphProvider } from '@/services/graph/providers/surrealGraph.provider.js';
 import type { ILlmProvider } from '@/services/llm/core/ILlmProvider.js';
 import { OpenRouterProvider } from '@/services/llm/providers/openrouter.provider.js';
+import type { IObsidianProvider } from '@/services/obsidian/core/IObsidianProvider.js';
+import { ObsidianRestProvider } from '@/services/obsidian/providers/obsidian-rest.provider.js';
 import { SpeechService as SpeechServiceClass } from '@/services/speech/index.js';
 import { StorageService as StorageServiceClass } from '@/storage/core/StorageService.js';
 import { createStorageProvider } from '@/storage/core/storageFactory.js';
@@ -131,6 +134,11 @@ export const registerCoreServices = () => {
   // LLM Provider (register the class against the interface token)
   container.register<ILlmProvider>(LlmProvider, {
     useClass: OpenRouterProvider,
+  });
+
+  // Obsidian Provider (register the class against the interface token)
+  container.register<IObsidianProvider>(ObsidianProvider, {
+    useClass: ObsidianRestProvider,
   });
 
   // Register RateLimiter as a singleton service
