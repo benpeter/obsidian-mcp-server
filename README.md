@@ -7,7 +7,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![MCP Spec](https://img.shields.io/badge/MCP%20Spec-2025--06--18-8A2BE2.svg?style=flat-square)](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-06-18/changelog.mdx) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.20.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Status](https://img.shields.io/badge/Status-Development-yellow.svg?style=flat-square)](https://github.com/cyanheads/obsidian-mcp-server/issues) [![TypeScript](https://img.shields.io/badge/TypeScript-^5.9.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.2.23-blueviolet.svg?style=flat-square)](https://bun.sh/) [![Built with mcp-ts-template](https://img.shields.io/badge/Built%20with-mcp--ts--template-blue.svg?style=flat-square)](https://github.com/cyanheads/mcp-ts-template)
+[![Version](https://img.shields.io/badge/Version-2.1.0-blue.svg?style=flat-square)](./CHANGELOG.md) [![MCP Spec](https://img.shields.io/badge/MCP%20Spec-2025--06--18-8A2BE2.svg?style=flat-square)](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/docs/specification/2025-06-18/changelog.mdx) [![MCP SDK](https://img.shields.io/badge/MCP%20SDK-^1.20.1-green.svg?style=flat-square)](https://modelcontextprotocol.io/) [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg?style=flat-square)](./LICENSE) [![Status](https://img.shields.io/badge/Status-Production-green.svg?style=flat-square)](https://github.com/cyanheads/obsidian-mcp-server/issues) [![TypeScript](https://img.shields.io/badge/TypeScript-^5.9.3-3178C6.svg?style=flat-square)](https://www.typescriptlang.org/) [![Bun](https://img.shields.io/badge/Bun-v1.2.23-blueviolet.svg?style=flat-square)](https://bun.sh/) [![Built with mcp-ts-template](https://img.shields.io/badge/Built%20with-mcp--ts--template-blue.svg?style=flat-square)](https://github.com/cyanheads/mcp-ts-template)
 
 </div>
 
@@ -15,312 +15,314 @@
 
 ## ✨ Features
 
-- **Declarative Tools & Resources**: Define capabilities in single, self-contained files. The framework handles registration and execution.
-- **Elicitation Support**: Tools can interactively prompt the user for missing parameters during execution, streamlining user workflows.
-- **Robust Error Handling**: A unified `McpError` system ensures consistent, structured error responses across the server.
-- **Pluggable Authentication**: Secure your server with zero-fuss support for `none`, `jwt`, or `oauth` modes.
-- **Abstracted Storage**: Swap storage backends (`in-memory`, `filesystem`, `Supabase`, `SurrealDB`, `Cloudflare D1/KV/R2`) without changing business logic. Features secure opaque cursor pagination, parallel batch operations, and comprehensive validation.
-- **Graph Database Operations**: Optional graph service for relationship management, graph traversals, and pathfinding algorithms (SurrealDB provider).
-- **Full-Stack Observability**: Get deep insights with structured logging (Pino) and optional, auto-instrumented OpenTelemetry for traces and metrics.
-- **Dependency Injection**: Built with `tsyringe` for a clean, decoupled, and testable architecture.
-- **Service Integrations**: Pluggable services for external APIs, including LLM providers (OpenRouter), text-to-speech (ElevenLabs), and graph operations (SurrealDB).
-- **Rich Built-in Utility Suite**: Helpers for parsing (PDF, YAML, CSV, frontmatter), formatting (diffs, tables, trees, markdown), scheduling, security, and more.
-- **Edge-Ready**: Write code once and run it seamlessly on your local machine or at the edge on Cloudflare Workers.
+- **🗒️ Comprehensive Note Operations**: Full CRUD operations on notes with support for frontmatter, tags, and content manipulation
+- **📝 Granular Content Updates**: Append, patch, or completely replace note content with surgical precision
+- **🔍 Advanced Search**: Multiple search modes including simple text search, Dataview queries, and JSONLogic queries
+- **📅 Periodic Notes Support**: First-class support for daily, weekly, monthly, quarterly, and yearly notes
+- **⚡ Command Execution**: List and execute any Obsidian command programmatically
+- **🎯 Active Note Context**: Special operations for the currently active note in Obsidian
+- **📁 Vault Management**: List files and directories across your entire vault
+- **🔒 Type-Safe API**: Full TypeScript support with generated types from OpenAPI spec
+- **⚙️ Production Ready**: Built on [mcp-ts-template](https://github.com/cyanheads/mcp-ts-template) with observability, error handling, and testing built-in
 
-## 🏗️ Architecture
+## 📋 Prerequisites
 
-This template follows a modular, domain-driven architecture with clear separation of concerns:
+Before using this MCP server, you need:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│              MCP Client (Claude Code, ChatGPT, etc.)    │
-└────────────────────┬────────────────────────────────────┘
-                     │ JSON-RPC 2.0
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│           MCP Server (Tools, Resources)                 │
-│           📖 [MCP Server Guide](src/mcp-server/)        │
-└────────────────────┬────────────────────────────────────┘
-                     │ Dependency Injection
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│          Dependency Injection Container                 │
-│              📦 [Container Guide](src/container/)       │
-└────────────────────┬────────────────────────────────────┘
-                     │
-        ┌────────────┼────────────┐
-        ▼            ▼            ▼
- ┌──────────┐   ┌──────────┐   ┌──────────┐
- │ Services │   │ Storage  │   │ Utilities│
- │ 🔌 [→]   │   │ 💾 [→]   │   │ 🛠️ [→]   │
- └──────────┘   └──────────┘   └──────────┘
+1. **Obsidian** (latest version recommended)
+2. **[Obsidian Local REST API Plugin](https://github.com/coddingtonbear/obsidian-local-rest-api)** installed and configured
+3. **Bun** v1.2.21 or higher (for development)
 
-[→]: src/services/    [→]: src/storage/    [→]: src/utils/
-```
+### Setting up Obsidian Local REST API
 
-**Key Modules:**
+1. Install the "Local REST API" plugin from Obsidian's Community Plugins
+2. Enable the plugin in Settings → Community Plugins
+3. Go to Settings → Local REST API
+4. Note the **API Key** (you'll need this for `OBSIDIAN_API_KEY`)
+5. Verify the server is running (default: `https://127.0.0.1:27124`)
 
-- **[MCP Server](src/mcp-server/)** - Tools, resources, prompts, and transport layer implementations
-- **[Container](src/container/)** - Dependency injection setup with tsyringe for clean architecture
-- **[Services](src/services/)** - External service integrations (LLM, Speech, Graph) with pluggable providers
-- **[Storage](src/storage/)** - Abstracted persistence layer with multiple backend support
-- **[Utilities](src/utils/)** - Cross-cutting concerns (logging, security, parsing, telemetry)
+## 🚀 Quick Start
 
-> 💡 **Tip**: Each module has its own comprehensive README with architecture diagrams, usage examples, and best practices. Click the links above to dive deeper!
+### Installation via NPM
 
-## 🛠️ Included Capabilities
-
-This template includes working examples to get you started.
-
-### Tools
-
-| Tool                                | Description                                                       |
-| :---------------------------------- | :---------------------------------------------------------------- |
-| **`template_echo_message`**         | Echoes a message back with optional formatting and repetition.    |
-| **`template_cat_fact`**             | Fetches a random cat fact from an external API.                   |
-| **`template_madlibs_elicitation`**  | Demonstrates elicitation by asking for words to complete a story. |
-| **`template_code_review_sampling`** | Uses the LLM service to perform a simulated code review.          |
-| **`template_image_test`**           | Returns a test image as a base64-encoded data URI.                |
-
-### Resources
-
-| Resource   | URI                | Description                                   |
-| :--------- | :----------------- | :-------------------------------------------- |
-| **`echo`** | `echo://{message}` | A simple resource that echoes back a message. |
-
-### Prompts
-
-| Prompt            | Description                                                      |
-| :---------------- | :--------------------------------------------------------------- |
-| **`code-review`** | A structured prompt for guiding an LLM to perform a code review. |
-
-## 🚀 Getting Started
-
-### MCP Client Settings/Configuration
-
-Add the following to your MCP Client configuration file (e.g., `cline_mcp_settings.json`).
+The easiest way to use this server is via `npx`:
 
 ```json
 {
   "mcpServers": {
-    "mcp-ts-template": {
-      "type": "stdio",
-      "command": "bunx",
-      "args": ["mcp-ts-template@latest"],
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "obsidian-mcp-server"],
       "env": {
-        "MCP_TRANSPORT_TYPE": "stdio",
-        "MCP_LOG_LEVEL": "info",
-        "STORAGE_PROVIDER_TYPE": "filesystem",
-        "STORAGE_FILESYSTEM_PATH": "/path/to/your/storage"
+        "OBSIDIAN_BASE_URL": "https://127.0.0.1:27124",
+        "OBSIDIAN_API_KEY": "your-api-key-here"
       }
     }
   }
 }
 ```
 
-### Prerequisites
+### Installation via Bunx
 
-- [Bun v1.2.21](https://bun.sh/) or higher.
+If you have Bun installed:
 
-### Installation
-
-1.  **Clone the repository:**
-
-```sh
-git clone https://github.com/cyanheads/mcp-ts-template.git
+```json
+{
+  "mcpServers": {
+    "obsidian": {
+      "command": "bunx",
+      "args": ["obsidian-mcp-server"],
+      "env": {
+        "OBSIDIAN_BASE_URL": "https://127.0.0.1:27124",
+        "OBSIDIAN_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
 ```
 
-2.  **Navigate into the directory:**
+### Installation from Source
 
-```sh
-cd mcp-ts-template
-```
+1. Clone the repository:
+   ```sh
+   git clone https://github.com/cyanheads/obsidian-mcp-server.git
+   cd obsidian-mcp-server
+   ```
 
-3.  **Install dependencies:**
+2. Install dependencies:
+   ```sh
+   bun install
+   ```
 
-```sh
-bun install
-```
+3. Build the server:
+   ```sh
+   bun run build
+   ```
+
+4. Add to your MCP client configuration:
+   ```json
+   {
+     "mcpServers": {
+       "obsidian": {
+         "command": "bun",
+         "args": ["run", "start:stdio"],
+         "cwd": "/path/to/obsidian-mcp-server",
+         "env": {
+           "OBSIDIAN_BASE_URL": "https://127.0.0.1:27124",
+           "OBSIDIAN_API_KEY": "your-api-key-here"
+         }
+       }
+     }
+   }
+   ```
 
 ## ⚙️ Configuration
 
-All configuration is centralized and validated at startup in `src/config/index.ts`. Key environment variables in your `.env` file include:
+### Required Environment Variables
 
-| Variable                    | Description                                                                                                             | Default     |
-| :-------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :---------- |
-| `MCP_TRANSPORT_TYPE`        | The transport to use: `stdio` or `http`.                                                                                | `http`      |
-| `MCP_HTTP_PORT`             | The port for the HTTP server.                                                                                           | `3010`      |
-| `MCP_HTTP_HOST`             | The hostname for the HTTP server.                                                                                       | `127.0.0.1` |
-| `MCP_AUTH_MODE`             | Authentication mode: `none`, `jwt`, or `oauth`.                                                                         | `none`      |
-| `MCP_AUTH_SECRET_KEY`       | **Required for `jwt` auth mode.** A 32+ character secret.                                                               | `(none)`    |
-| `OAUTH_ISSUER_URL`          | **Required for `oauth` auth mode.** URL of the OIDC provider.                                                           | `(none)`    |
-| `STORAGE_PROVIDER_TYPE`     | Storage backend: `in-memory`, `filesystem`, `supabase`, `surrealdb`, `cloudflare-d1`, `cloudflare-kv`, `cloudflare-r2`. | `in-memory` |
-| `STORAGE_FILESYSTEM_PATH`   | **Required for `filesystem` storage.** Path to the storage directory.                                                   | `(none)`    |
-| `SUPABASE_URL`              | **Required for `supabase` storage.** Your Supabase project URL.                                                         | `(none)`    |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Required for `supabase` storage.** Your Supabase service role key.                                                    | `(none)`    |
-| `SURREALDB_URL`             | **Required for `surrealdb` storage.** SurrealDB endpoint (e.g., `wss://cloud.surrealdb.com/rpc`).                       | `(none)`    |
-| `SURREALDB_NAMESPACE`       | **Required for `surrealdb` storage.** SurrealDB namespace.                                                              | `(none)`    |
-| `SURREALDB_DATABASE`        | **Required for `surrealdb` storage.** SurrealDB database name.                                                          | `(none)`    |
-| `SURREALDB_USERNAME`        | **Optional for `surrealdb` storage.** Database username for authentication.                                             | `(none)`    |
-| `SURREALDB_PASSWORD`        | **Optional for `surrealdb` storage.** Database password for authentication.                                             | `(none)`    |
-| `OTEL_ENABLED`              | Set to `true` to enable OpenTelemetry.                                                                                  | `false`     |
-| `LOG_LEVEL`                 | The minimum level for logging (`debug`, `info`, `warn`, `error`).                                                       | `info`      |
-| `OPENROUTER_API_KEY`        | API key for OpenRouter LLM service.                                                                                     | `(none)`    |
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `OBSIDIAN_BASE_URL` | Base URL for Obsidian Local REST API | `https://127.0.0.1:27124` | No |
+| `OBSIDIAN_API_KEY` | API key from Obsidian Local REST API plugin settings | - | Yes |
+| `OBSIDIAN_VERIFY_SSL` | Enable SSL certificate verification | `false` | No |
 
-### Authentication & Authorization
+### Optional Environment Variables
 
-- **Modes**: `none` (default), `jwt` (requires `MCP_AUTH_SECRET_KEY`), or `oauth` (requires `OAUTH_ISSUER_URL` and `OAUTH_AUDIENCE`).
-- **Enforcement**: Wrap your tool/resource `logic` functions with `withToolAuth([...])` or `withResourceAuth([...])` to enforce scope checks. Scope checks are bypassed for developer convenience when auth mode is `none`.
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MCP_LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
+| `MCP_TRANSPORT_TYPE` | Transport type (`stdio` or `http`) | `stdio` |
 
-### Storage
+### SSL Certificate Notes
 
-- **Service**: A DI-managed `StorageService` provides a consistent API for persistence. **Never access `fs` or other storage SDKs directly from tool logic.**
-- **Providers**: The default is `in-memory`. Node-only providers include `filesystem`. Edge-compatible providers include `supabase`, `surrealdb`, `cloudflare-kv`, and `cloudflare-r2`.
-- **SurrealDB Setup**: When using `surrealdb` provider, initialize the database schema using `docs/surrealdb-schema.surql` before first use.
-- **Multi-Tenancy**: The `StorageService` requires `context.tenantId`. This is automatically propagated from the `tid` claim in a JWT when auth is enabled.
-- **Advanced Features**:
-  - **Secure Pagination**: Opaque cursors with tenant ID binding prevent cross-tenant attacks
-  - **Batch Operations**: Parallel execution for `getMany()`, `setMany()`, `deleteMany()`
-  - **TTL Support**: Time-to-live with proper expiration handling across all providers
-  - **Comprehensive Validation**: Centralized input validation for tenant IDs, keys, and options
+The Obsidian Local REST API uses a self-signed certificate by default. If you encounter SSL errors:
 
-### Observability
+1. Set `OBSIDIAN_VERIFY_SSL=false` (recommended for local use)
+2. Or, trust the self-signed certificate in your system
 
-- **Structured Logging**: Pino is integrated out-of-the-box. All logs are JSON and include the `RequestContext`.
-- **OpenTelemetry**: Disabled by default. Enable with `OTEL_ENABLED=true` and configure OTLP endpoints. Traces, metrics (duration, payload sizes), and errors are automatically captured for every tool call.
+## 🛠️ Available Tools
 
-## ▶️ Running the Server
+All 19 tools follow a consistent, predictable naming pattern: `obsidian_{action}_{target}`
 
-### Local Development
+### Note Reading (3 tools)
 
-- **Build and run the production version**:
+| Tool | Description |
+|------|-------------|
+| `obsidian_get_note` | Get content of a specific note by path |
+| `obsidian_get_active_note` | Get content of the currently active note |
+| `obsidian_get_periodic_note` | Get a periodic note (daily, weekly, monthly, etc.) |
 
-  ```sh
-  # One-time build
-  bun rebuild
+### Note Creation & Modification (8 tools)
 
-  # Run the built server
-  bun start:http
-  # or
-  bun start:stdio
-  ```
+| Tool | Description |
+|------|-------------|
+| `obsidian_create_note` | Create a new note with optional content and frontmatter |
+| `obsidian_append_note` | Append content to the end of a specific note |
+| `obsidian_append_active_note` | Append content to the currently active note |
+| `obsidian_append_periodic_note` | Append content to a periodic note |
+| `obsidian_patch_note` | Surgically update parts of a note (frontmatter, tags, headings) |
+| `obsidian_patch_active_note` | Patch the currently active note |
+| `obsidian_patch_periodic_note` | Patch a periodic note |
+| `obsidian_update_active_note` | Replace entire content of the active note |
 
-- **Run checks and tests**:
-  ```sh
-  bun devcheck # Lints, formats, type-checks, and more
-  bun run test # Runs the test suite (Do not use 'bun test' directly as it may not work correctly)
-  ```
+### Vault Operations (3 tools)
 
-### Cloudflare Workers
+| Tool | Description |
+|------|-------------|
+| `obsidian_list_vault_files` | List all files and directories in the vault |
+| `obsidian_open_note` | Open a specific note in Obsidian |
+| `obsidian_delete_note` | Delete a note from the vault |
 
-1.  **Build the Worker bundle**:
+### Search (3 tools)
 
-```sh
-bun build:worker
+| Tool | Description |
+|------|-------------|
+| `obsidian_search_simple` | Simple text search across all notes |
+| `obsidian_search_dataview` | Advanced search using Dataview Query Language (requires Dataview plugin) |
+| `obsidian_search_jsonlogic` | Complex search using JSONLogic queries |
+
+### Commands (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `obsidian_list_commands` | List all available Obsidian commands |
+| `obsidian_execute_command` | Execute any Obsidian command by ID |
+
+## 📖 Usage Examples
+
+### Creating a Daily Note
+
+```typescript
+// Using obsidian_get_periodic_note
+{
+  "granularity": "daily",
+  "offset": 0  // Today
+}
 ```
 
-2.  **Run locally with Wrangler**:
+### Searching with Dataview
 
-```sh
-bun deploy:dev
+```typescript
+// Using obsidian_search_dataview
+{
+  "query": "TABLE file.mtime as Modified FROM \"Projects\" WHERE status = \"active\""
+}
 ```
 
-3.  **Deploy to Cloudflare**:
+### Patching Frontmatter
 
-```sh
-bun deploy:prod
+```typescript
+// Using obsidian_patch_note
+{
+  "path": "Projects/MyProject.md",
+  "operation": "insert",
+  "targetType": "frontmatter",
+  "content": "status: completed\ndate: 2025-10-23"
+}
 ```
 
-> **Note**: The `wrangler.toml` file is pre-configured to enable `nodejs_compat` for best results.
+### Appending to Active Note
 
-## 📂 Project Structure
+```typescript
+// Using obsidian_append_active_note
+{
+  "content": "\n## New Section\n\nSome new content here."
+}
+```
 
-| Directory                              | Purpose & Contents                                                                   | Guide                                |
-| :------------------------------------- | :----------------------------------------------------------------------------------- | :----------------------------------- |
-| `src/mcp-server/tools/definitions`     | Your tool definitions (`*.tool.ts`). This is where you add new capabilities.         | [📖 MCP Guide](src/mcp-server/)      |
-| `src/mcp-server/resources/definitions` | Your resource definitions (`*.resource.ts`). This is where you add new data sources. | [📖 MCP Guide](src/mcp-server/)      |
-| `src/mcp-server/transports`            | Implementations for HTTP and STDIO transports, including auth middleware.            | [📖 MCP Guide](src/mcp-server/)      |
-| `src/storage`                          | The `StorageService` abstraction and all storage provider implementations.           | [💾 Storage Guide](src/storage/)     |
-| `src/services`                         | Integrations with external services (e.g., the default OpenRouter LLM provider).     | [🔌 Services Guide](src/services/)   |
-| `src/container`                        | Dependency injection container registrations and tokens.                             | [📦 Container Guide](src/container/) |
-| `src/utils`                            | Core utilities for logging, error handling, performance, security, and telemetry.    |                                      |
-| `src/config`                           | Environment variable parsing and validation with Zod.                                |                                      |
-| `tests/`                               | Unit and integration tests, mirroring the `src/` directory structure.                |                                      |
+## 🏗️ Architecture
 
-## 📚 Documentation
+Built on the [mcp-ts-template](https://github.com/cyanheads/mcp-ts-template) framework, this server follows a clean, modular architecture:
 
-Each major module includes comprehensive documentation with architecture diagrams, usage examples, and best practices:
+```
+obsidian-mcp-server/
+├── src/
+│   ├── mcp-server/
+│   │   └── tools/definitions/     # 19 Obsidian tool definitions
+│   ├── services/obsidian/         # Obsidian REST API client
+│   │   ├── core/                  # Client and provider interfaces
+│   │   ├── providers/             # REST API implementation
+│   │   ├── utils/                 # Error mapping, path normalization
+│   │   └── types/                 # OpenAPI-generated types
+│   ├── config/                    # Configuration and env validation
+│   └── utils/                     # Logging, error handling, parsing
+└── tests/                         # Comprehensive test suite
+```
 
-### Core Modules
+## 🧪 Development
 
-- **[MCP Server Guide](src/mcp-server/)** - Complete guide to building MCP tools and resources
-  - Creating tools with declarative definitions
-  - Resource development with URI templates
-  - Authentication and authorization
-  - Transport layer (HTTP/stdio) configuration
-  - SDK context and client interaction
-  - Response formatting and error handling
-
-- **[Container Guide](src/container/)** - Dependency injection with tsyringe
-  - Understanding DI tokens and registration
-  - Service lifetimes (singleton, transient, instance)
-  - Constructor injection patterns
-  - Testing with mocked dependencies
-  - Adding new services to the container
-
-- **[Services Guide](src/services/)** - External service integration patterns
-  - LLM provider integration (OpenRouter)
-  - Speech services (TTS/STT with ElevenLabs, Whisper)
-  - Graph database operations (SurrealDB)
-  - Creating custom service providers
-  - Health checks and error handling
-
-- **[Storage Guide](src/storage/)** - Abstracted persistence layer
-  - Storage provider implementations
-  - Multi-tenancy and tenant isolation
-  - Secure cursor-based pagination
-  - Batch operations and TTL support
-  - Provider-specific setup guides
-
-### Additional Resources
-
-- **[AGENTS.md](AGENTS.md)** - Strict development rules for AI agents
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history and breaking changes
-- **[docs/tree.md](docs/tree.md)** - Complete visual directory structure
-- **[docs/publishing-mcp-server-registry.md](docs/publishing-mcp-server-registry.md)** - Publishing guide for MCP Registry
-
-## 🧑‍💻 Agent Development Guide
-
-For a strict set of rules when using this template with an AI agent, please refer to **`AGENTS.md`**. Key principles include:
-
-- **Logic Throws, Handlers Catch**: Never use `try/catch` in your tool/resource `logic`. Throw an `McpError` instead.
-- **Use Elicitation for Missing Input**: If a tool requires user input that wasn't provided, use the `elicitInput` function from the `SdkContext` to ask the user for it.
-- **Pass the Context**: Always pass the `RequestContext` object through your call stack.
-- **Use the Barrel Exports**: Register new tools and resources only in the `index.ts` barrel files.
-
-## ❓ FAQ
-
-- **Does this work with both STDIO and Streamable HTTP?**
-  - Yes. Both transports are first-class citizens. Use `bun run dev:stdio` or `bun run dev:http`.
-- **Can I deploy this to the edge?**
-  - Yes. The template is designed for Cloudflare Workers. Run `bun run build:worker` and deploy with Wrangler.
-- **Do I have to use OpenTelemetry?**
-  - No, it is disabled by default. Enable it by setting `OTEL_ENABLED=true` in your `.env` file.
-- **How do I publish my server to the MCP Registry?**
-  - Follow the step-by-step guide in `docs/publishing-mcp-server-registry.md`.
-
-## 🤝 Contributing
-
-Issues and pull requests are welcome! If you plan to contribute, please run the local checks and tests before submitting your PR.
+### Running Tests
 
 ```sh
-bun run devcheck
 bun test
 ```
 
+### Running Checks
+
+```sh
+bun run devcheck  # Lints, formats, type-checks, and audits
+```
+
+### Local Development Mode
+
+```sh
+# STDIO mode (for MCP clients)
+bun run dev:stdio
+
+# HTTP mode (for testing with curl/Postman)
+bun run dev:http
+```
+
+## 📚 Documentation
+
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and release notes
+- **[CLAUDE.md](CLAUDE.md)** - Development guide and architecture rules
+- **[docs/obsidian/](docs/obsidian/)** - Obsidian integration documentation
+- **[mcp-ts-template docs](https://github.com/cyanheads/mcp-ts-template)** - Framework documentation
+
+## 🔧 Troubleshooting
+
+### Connection Refused
+
+- Ensure Obsidian is running
+- Verify the Local REST API plugin is enabled
+- Check that `OBSIDIAN_BASE_URL` matches the plugin's configured port
+
+### SSL Certificate Errors
+
+- Set `OBSIDIAN_VERIFY_SSL=false` in your environment variables
+- Or trust the self-signed certificate in your system's certificate store
+
+### Authentication Errors
+
+- Verify `OBSIDIAN_API_KEY` matches the key shown in plugin settings
+- The API key should be copied exactly (no extra spaces)
+
+### Note Not Found
+
+- Paths should be relative to vault root (e.g., `folder/note.md`)
+- The `.md` extension is optional but recommended for clarity
+- Check vault file list with `obsidian_list_vault_files`
+
+## 🤝 Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Run `bun run devcheck` to ensure quality
+5. Submit a pull request
+
 ## 📜 License
 
-This project is licensed under the Apache 2.0 License. See the [LICENSE](./LICENSE) file for details.
+This project is licensed under the Apache 2.0 License. See [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- Built with [mcp-ts-template](https://github.com/cyanheads/mcp-ts-template)
+- Integrates with [Obsidian Local REST API](https://github.com/coddingtonbear/obsidian-local-rest-api)
+- Powered by the [Model Context Protocol](https://modelcontextprotocol.io/)
 
 ---
 
@@ -328,5 +330,8 @@ This project is licensed under the Apache 2.0 License. See the [LICENSE](./LICEN
   <p>
     <a href="https://github.com/sponsors/cyanheads">Sponsor this project</a> •
     <a href="https://www.buymeacoffee.com/cyanheads">Buy me a coffee</a>
+  </p>
+  <p>
+    <sub>Made with ❤️ for the Obsidian and MCP communities</sub>
   </p>
 </div>
