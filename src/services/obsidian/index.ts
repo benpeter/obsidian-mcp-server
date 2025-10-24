@@ -63,3 +63,15 @@ export {
   formatCommandList,
   formatVaultFileList,
 } from './utils/response-mapper.js';
+
+export {
+  validateNotePath,
+  validatePeriodicParams,
+  validateCommandId,
+  validateSearchOptions,
+  validatePatchOptions,
+  validateJsonLogicQuery,
+  validateDataviewQuery,
+} from './utils/validators.js';
+
+export { buildPatchHeaders, type PatchHeaders } from './utils/patch-builder.js';
