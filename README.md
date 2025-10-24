@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>@cyanheads/obsidian-mcp-server</h1>
+  <h1>obsidian-mcp-server</h1>
   <p><b>Production-grade MCP server that enables AI agents to interact with Obsidian vaults through the Obsidian Local REST API. Features comprehensive note operations, search capabilities, periodic notes, and command execution.</b>
   <div>19 Tools • 0 Prompts</div>
   </p>
@@ -17,27 +17,27 @@
 
 This server provides 19 comprehensive tools for Obsidian vault operations, organized into five functional categories:
 
-| Category                   | Tool                                | Description                                                 |
-| :------------------------- | :---------------------------------- | :---------------------------------------------------------- |
-| **Note Reading**           | `obsidian_get_note`                 | Get content of a specific note by path                      |
-|                            | `obsidian_get_active_note`          | Get content of the currently active note                    |
-|                            | `obsidian_get_periodic_note`        | Get a periodic note (daily, weekly, monthly, etc.)          |
-| **Note Creation & Update** | `obsidian_create_note`              | Create a new note with optional content and frontmatter     |
-|                            | `obsidian_append_note`              | Append content to the end of a specific note                |
-|                            | `obsidian_append_active_note`       | Append content to the currently active note                 |
-|                            | `obsidian_append_periodic_note`     | Append content to a periodic note                           |
-|                            | `obsidian_patch_note`               | Surgically update parts of a note (frontmatter, tags, etc.) |
-|                            | `obsidian_patch_active_note`        | Patch the currently active note                             |
-|                            | `obsidian_patch_periodic_note`      | Patch a periodic note                                       |
-|                            | `obsidian_update_active_note`       | Replace entire content of the active note                   |
-| **Vault Operations**       | `obsidian_list_vault_files`         | List all files and directories in the vault                 |
-|                            | `obsidian_open_note`                | Open a specific note in Obsidian                            |
-|                            | `obsidian_delete_note`              | Delete a note from the vault                                |
-| **Search**                 | `obsidian_search_simple`            | Simple text search across all notes                         |
-|                            | `obsidian_search_dataview`          | Advanced search using Dataview Query Language               |
-|                            | `obsidian_search_jsonlogic`         | Complex search using JSONLogic queries                      |
-| **Commands**               | `obsidian_list_commands`            | List all available Obsidian commands                        |
-|                            | `obsidian_execute_command`          | Execute any Obsidian command by ID                          |
+| Category                   | Tool                            | Description                                                 |
+| :------------------------- | :------------------------------ | :---------------------------------------------------------- |
+| **Note Reading**           | `obsidian_get_note`             | Get content of a specific note by path                      |
+|                            | `obsidian_get_active_note`      | Get content of the currently active note                    |
+|                            | `obsidian_get_periodic_note`    | Get a periodic note (daily, weekly, monthly, etc.)          |
+| **Note Creation & Update** | `obsidian_create_note`          | Create a new note with optional content and frontmatter     |
+|                            | `obsidian_append_note`          | Append content to the end of a specific note                |
+|                            | `obsidian_append_active_note`   | Append content to the currently active note                 |
+|                            | `obsidian_append_periodic_note` | Append content to a periodic note                           |
+|                            | `obsidian_patch_note`           | Surgically update parts of a note (frontmatter, tags, etc.) |
+|                            | `obsidian_patch_active_note`    | Patch the currently active note                             |
+|                            | `obsidian_patch_periodic_note`  | Patch a periodic note                                       |
+|                            | `obsidian_update_active_note`   | Replace entire content of the active note                   |
+| **Vault Operations**       | `obsidian_list_vault_files`     | List all files and directories in the vault                 |
+|                            | `obsidian_open_note`            | Open a specific note in Obsidian                            |
+|                            | `obsidian_delete_note`          | Delete a note from the vault                                |
+| **Search**                 | `obsidian_search_simple`        | Simple text search across all notes                         |
+|                            | `obsidian_search_dataview`      | Advanced search using Dataview Query Language               |
+|                            | `obsidian_search_jsonlogic`     | Complex search using JSONLogic queries                      |
+| **Commands**               | `obsidian_list_commands`        | List all available Obsidian commands                        |
+|                            | `obsidian_execute_command`      | Execute any Obsidian command by ID                          |
 
 ### Use Cases
 
@@ -74,10 +74,10 @@ Before using this MCP server, you need:
 
 This server works with **both Bun and Node.js runtimes**:
 
-| Runtime     | Command                               | Minimum Version | Notes                                    |
-| ----------- | ------------------------------------- | --------------- | ---------------------------------------- |
-| **Bun**     | `bunx obsidian-mcp-server@latest`     | ≥ 1.2.0         | Native Bun runtime (optimal performance) |
-| **Node.js** | `npx -y obsidian-mcp-server@latest`   | ≥ 20.0.0        | Via npx (universal compatibility)        |
+| Runtime     | Command                             | Minimum Version | Notes                                    |
+| ----------- | ----------------------------------- | --------------- | ---------------------------------------- |
+| **Bun**     | `bunx obsidian-mcp-server@latest`   | ≥ 1.2.0         | Native Bun runtime (optimal performance) |
+| **Node.js** | `npx -y obsidian-mcp-server@latest` | ≥ 20.0.0        | Via npx (universal compatibility)        |
 
 The server automatically detects the runtime and optimizes performance accordingly.
 
@@ -216,19 +216,19 @@ Plus, specialized features for **Obsidian integration**:
 
 All configuration is centralized and validated at startup in `src/config/index.ts`. Key environment variables in your `.env` file include:
 
-| Variable                 | Description                                                    | Default                   | Required |
-| :----------------------- | :------------------------------------------------------------- | :------------------------ | :------- |
-| `OBSIDIAN_BASE_URL`      | Base URL for Obsidian Local REST API                           | `https://127.0.0.1:27124` | No       |
-| `OBSIDIAN_API_KEY`       | API key from Obsidian Local REST API plugin settings           | `(none)`                  | Yes      |
-| `OBSIDIAN_VERIFY_SSL`    | Enable SSL certificate verification                            | `false`                   | No       |
-| `MCP_TRANSPORT_TYPE`     | The transport to use: `stdio` or `http`                        | `stdio`                   | No       |
-| `MCP_HTTP_PORT`          | The port for the HTTP server                                   | `3010`                    | No       |
-| `MCP_HTTP_HOST`          | The hostname for the HTTP server                               | `127.0.0.1`               | No       |
-| `MCP_AUTH_MODE`          | Authentication mode: `none`, `jwt`, or `oauth`                 | `none`                    | No       |
-| `MCP_LOG_LEVEL`          | The minimum level for logging (`debug`, `info`, `warn`, `error`) | `info`                    | No       |
-| `OTEL_ENABLED`           | Set to `true` to enable OpenTelemetry                          | `false`                   | No       |
-| `MCP_AUTH_SECRET_KEY`    | **Required for `jwt` auth.** A 32+ character secret key        | `(none)`                  | No       |
-| `OAUTH_ISSUER_URL`       | **Required for `oauth` auth.** URL of the OIDC provider        | `(none)`                  | No       |
+| Variable              | Description                                                      | Default                   | Required |
+| :-------------------- | :--------------------------------------------------------------- | :------------------------ | :------- |
+| `OBSIDIAN_BASE_URL`   | Base URL for Obsidian Local REST API                             | `https://127.0.0.1:27124` | No       |
+| `OBSIDIAN_API_KEY`    | API key from Obsidian Local REST API plugin settings             | `(none)`                  | Yes      |
+| `OBSIDIAN_VERIFY_SSL` | Enable SSL certificate verification                              | `false`                   | No       |
+| `MCP_TRANSPORT_TYPE`  | The transport to use: `stdio` or `http`                          | `stdio`                   | No       |
+| `MCP_HTTP_PORT`       | The port for the HTTP server                                     | `3010`                    | No       |
+| `MCP_HTTP_HOST`       | The hostname for the HTTP server                                 | `127.0.0.1`               | No       |
+| `MCP_AUTH_MODE`       | Authentication mode: `none`, `jwt`, or `oauth`                   | `none`                    | No       |
+| `MCP_LOG_LEVEL`       | The minimum level for logging (`debug`, `info`, `warn`, `error`) | `info`                    | No       |
+| `OTEL_ENABLED`        | Set to `true` to enable OpenTelemetry                            | `false`                   | No       |
+| `MCP_AUTH_SECRET_KEY` | **Required for `jwt` auth.** A 32+ character secret key          | `(none)`                  | No       |
+| `OAUTH_ISSUER_URL`    | **Required for `oauth` auth.** URL of the OIDC provider          | `(none)`                  | No       |
 
 ### Authentication & Authorization
 
@@ -370,17 +370,17 @@ bun deploy:prod
 
 ## 📂 Project Structure
 
-| Directory                   | Purpose & Contents                                                                   |
-| :-------------------------- | :----------------------------------------------------------------------------------- |
+| Directory                   | Purpose & Contents                                                                  |
+| :-------------------------- | :---------------------------------------------------------------------------------- |
 | `src/mcp-server/tools`      | Obsidian tool definitions (`obsidian-*.tool.ts`). All 19 tools are defined here.    |
 | `src/services/obsidian`     | Obsidian REST API client (core interfaces, providers, utils, and generated types).  |
-| `src/mcp-server/transports` | Implementations for HTTP and STDIO transports, including auth middleware.            |
-| `src/storage`               | `StorageService` abstraction and all storage provider implementations.               |
-| `src/container`             | Dependency injection container registrations and tokens.                             |
-| `src/utils`                 | Core utilities for logging, error handling, performance, security, and telemetry.    |
-| `src/config`                | Environment variable parsing and validation with Zod.                                |
-| `tests/`                    | Unit and integration tests, mirroring the `src/` directory structure.                |
-| `docs/`                     | Comprehensive documentation including Obsidian integration guides and architecture.  |
+| `src/mcp-server/transports` | Implementations for HTTP and STDIO transports, including auth middleware.           |
+| `src/storage`               | `StorageService` abstraction and all storage provider implementations.              |
+| `src/container`             | Dependency injection container registrations and tokens.                            |
+| `src/utils`                 | Core utilities for logging, error handling, performance, security, and telemetry.   |
+| `src/config`                | Environment variable parsing and validation with Zod.                               |
+| `tests/`                    | Unit and integration tests, mirroring the `src/` directory structure.               |
+| `docs/`                     | Comprehensive documentation including Obsidian integration guides and architecture. |
 
 ## 🧪 Testing
 

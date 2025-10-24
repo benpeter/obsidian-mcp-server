@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0-alpha02] - 2025-10-24
+
+### Added
+
+- Added `undici` dependency for Node.js SSL/TLS handling
+- Added comprehensive debug logging throughout ObsidianClient with RequestContext correlation
+- Added Bun environment detection for runtime-specific TLS configuration
+
+### Changed
+
+- Enhanced SSL certificate validation to support both Bun and Node.js runtimes
+- Improved boolean environment variable parsing for `OBSIDIAN_VERIFY_SSL` (accepts 'true', '1', 'yes')
+- Refactored ObsidianClient to use undici's global dispatcher for Node.js HTTPS connections
+- Updated build script to externalize undici dependency
+- Reordered tool definitions alphabetically within functional categories
+- Enhanced ObsidianClient constructor to accept optional logger instance
+- Updated all ObsidianRestProvider methods with explicit `await` keywords for consistency
+
+### Fixed
+
+- Fixed SSL/TLS connection handling for self-signed certificates in both Bun and Node.js
+- Fixed Request object handling in custom fetch implementation
+- Removed unnecessary type assertions from frontmatter assignments in note tools
+- Improved type safety in prompt registration with better optional schema handling
+
+### Removed
+
+- Removed template prompt and resource definitions to focus on Obsidian-specific functionality
+
+---
+
 ## [2.1.0] - 2025-10-23
 
 ### Alignment
