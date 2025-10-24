@@ -5,7 +5,6 @@
  */
 
 import type { RequestContext } from '@/utils/index.js';
-import { McpError, JsonRpcErrorCode } from '@/types-global/errors.js';
 import { OperationBase } from '../shared/operation-base.js';
 import type {
   NoteJson,
@@ -14,14 +13,34 @@ import type {
 } from '../shared/types.js';
 import { enrichNoteData } from '../../utils/response-mapper.js';
 import {
-  createErrorFromApiResponse,
-  handleNetworkError,
-} from '../../utils/error-mapper.js';
+  validatePeriodicParams,
+  validatePatchOptions,
+} from '../../utils/validators.js';
+import { buildPatchHeaders } from '../../utils/patch-builder.js';
 
 /**
  * Handles all periodic note-related operations
  */
 export class PeriodicOperations extends OperationBase {
+  /**
+   * Build query parameters from periodic note params
+   */
+  private buildQueryParams(params: PeriodicNoteParams): Record<string, string> {
+    const queryParams: Record<string, string> = {};
+
+    if (params.year !== undefined) {
+      queryParams.year = params.year.toString();
+    }
+    if (params.month !== undefined) {
+      queryParams.month = params.month.toString();
+    }
+    if (params.day !== undefined) {
+      queryParams.day = params.day.toString();
+    }
+
+    return queryParams;
+  }
+
   /**
    * Get a periodic note (current or specific date)
    */
@@ -29,28 +48,16 @@ export class PeriodicOperations extends OperationBase {
     appContext: RequestContext,
     params: PeriodicNoteParams,
   ): Promise<NoteJson> {
-    this.logInfo(
-      'Getting periodic note',
-      this.createContext('getPeriodicNote', appContext, {
-        period: params.period,
-        year: params.year,
-        month: params.month,
-        day: params.day,
-      }),
-    );
+    // Validate periodic params
+    validatePeriodicParams(params);
 
-    try {
-      const client = this.getClient();
-      const queryParams: Record<string, string> = {};
+    return this.executeOperation(
+      'getPeriodicNote',
+      appContext,
+      async () => {
+        const queryParams = this.buildQueryParams(params);
 
-      if (params.year !== undefined) queryParams.year = params.year.toString();
-      if (params.month !== undefined)
-        queryParams.month = params.month.toString();
-      if (params.day !== undefined) queryParams.day = params.day.toString();
-
-      const response =
-        await // @ts-expect-error - openapi-fetch path type inference issue
-        client.GET('/periodic/{period}', {
+        const response = await this.apiGet('/periodic/{period}', {
           params: {
             path: {
               period: params.period,
@@ -62,48 +69,16 @@ export class PeriodicOperations extends OperationBase {
           },
         });
 
-      if (this.isErrorResponse(response) || !response.response.ok) {
-        throw createErrorFromApiResponse(
-          response.response.status,
-          response.error ?? null,
-          'getPeriodicNote',
-        );
-      }
-
-      if (!response.data) {
-        throw new McpError(
-          JsonRpcErrorCode.InternalError,
-          'No data returned from Obsidian API',
-        );
-      }
-
-      const note = enrichNoteData(
-        (response as unknown as { data: NoteJson }).data,
-      );
-
-      this.logDebug(
-        'Retrieved periodic note',
-        this.createContext('getPeriodicNote', appContext, {
-          period: params.period,
-          notePath: note.path,
-        }),
-      );
-
-      return note;
-    } catch (error) {
-      this.logError(
-        'Failed to get periodic note',
-        this.createContext('getPeriodicNote', appContext, {
-          period: params.period,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      );
-
-      if (error instanceof McpError) {
-        throw error;
-      }
-      throw handleNetworkError(error, 'getPeriodicNote');
-    }
+        const note = this.extractNoteData(response.data);
+        return enrichNoteData(note);
+      },
+      {
+        period: params.period,
+        year: params.year,
+        month: params.month,
+        day: params.day,
+      },
+    );
   }
 
   /**
@@ -114,84 +89,40 @@ export class PeriodicOperations extends OperationBase {
     params: PeriodicNoteParams,
     content: string,
   ): Promise<NoteJson> {
-    this.logInfo(
-      'Appending to periodic note',
-      this.createContext('appendPeriodicNote', appContext, {
-        period: params.period,
-        contentLength: content.length,
-        year: params.year,
-        month: params.month,
-        day: params.day,
-      }),
-    );
+    // Validate periodic params
+    validatePeriodicParams(params);
 
-    try {
-      const client = this.getClient();
-      const queryParams: Record<string, string> = {};
+    return this.executeOperation(
+      'appendPeriodicNote',
+      appContext,
+      async () => {
+        const queryParams = this.buildQueryParams(params);
 
-      if (params.year !== undefined) queryParams.year = params.year.toString();
-      if (params.month !== undefined)
-        queryParams.month = params.month.toString();
-      if (params.day !== undefined) queryParams.day = params.day.toString();
-
-      const response =
-        await // @ts-expect-error - openapi-fetch path type inference issue
-        client.POST('/periodic/{period}', {
+        const response = await this.apiPost('/periodic/{period}', {
           params: {
             path: {
               period: params.period,
             },
             query: queryParams,
           },
-          body: content as never,
+          body: content,
           headers: {
             'Content-Type': 'text/markdown',
             Accept: 'application/vnd.olrapi.note+json',
           },
         });
 
-      if (this.isErrorResponse(response) || !response.response.ok) {
-        throw createErrorFromApiResponse(
-          response.response.status,
-          response.error ?? null,
-          'appendPeriodicNote',
-        );
-      }
-
-      if (!response.data) {
-        throw new McpError(
-          JsonRpcErrorCode.InternalError,
-          'No data returned from Obsidian API',
-        );
-      }
-
-      const note = enrichNoteData(
-        (response as unknown as { data: NoteJson }).data,
-      );
-
-      this.logDebug(
-        'Appended to periodic note',
-        this.createContext('appendPeriodicNote', appContext, {
-          period: params.period,
-          notePath: note.path,
-        }),
-      );
-
-      return note;
-    } catch (error) {
-      this.logError(
-        'Failed to append to periodic note',
-        this.createContext('appendPeriodicNote', appContext, {
-          period: params.period,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      );
-
-      if (error instanceof McpError) {
-        throw error;
-      }
-      throw handleNetworkError(error, 'appendPeriodicNote');
-    }
+        const note = this.extractNoteData(response.data);
+        return enrichNoteData(note);
+      },
+      {
+        period: params.period,
+        contentLength: content.length,
+        year: params.year,
+        month: params.month,
+        day: params.day,
+      },
+    );
   }
 
   /**
@@ -202,53 +133,18 @@ export class PeriodicOperations extends OperationBase {
     params: PeriodicNoteParams,
     patchOptions: Omit<PatchOptions, 'path'>,
   ): Promise<NoteJson> {
-    this.logInfo(
-      'Patching periodic note',
-      this.createContext('patchPeriodicNote', appContext, {
-        period: params.period,
-        targetType: patchOptions.targetType,
-        target: patchOptions.target,
-        patchOperation: patchOptions.operation,
-        year: params.year,
-        month: params.month,
-        day: params.day,
-      }),
-    );
+    // Validate periodic params and patch options
+    validatePeriodicParams(params);
+    validatePatchOptions(patchOptions);
 
-    try {
-      const client = this.getClient();
-      const queryParams: Record<string, string> = {};
+    return this.executeOperation(
+      'patchPeriodicNote',
+      appContext,
+      async () => {
+        const queryParams = this.buildQueryParams(params);
+        const headers = buildPatchHeaders(patchOptions);
 
-      if (params.year !== undefined) queryParams.year = params.year.toString();
-      if (params.month !== undefined)
-        queryParams.month = params.month.toString();
-      if (params.day !== undefined) queryParams.day = params.day.toString();
-
-      const headers: {
-        Operation: 'append' | 'prepend' | 'replace';
-        'Target-Type': 'heading' | 'block' | 'frontmatter';
-        Target: string;
-        'Target-Delimiter'?: string;
-        'Trim-Target-Whitespace'?: 'true' | 'false';
-      } = {
-        Operation: patchOptions.operation,
-        'Target-Type': patchOptions.targetType,
-        Target: patchOptions.target,
-      };
-
-      if (patchOptions.targetDelimiter) {
-        headers['Target-Delimiter'] = patchOptions.targetDelimiter;
-      }
-
-      if (patchOptions.trimTargetWhitespace !== undefined) {
-        headers['Trim-Target-Whitespace'] = patchOptions.trimTargetWhitespace
-          ? 'true'
-          : 'false';
-      }
-
-      const response =
-        await // @ts-expect-error - openapi-fetch path type inference issue
-        client.PATCH('/periodic/{period}', {
+        const response = await this.apiPatch('/periodic/{period}', {
           params: {
             path: {
               period: params.period,
@@ -256,51 +152,22 @@ export class PeriodicOperations extends OperationBase {
             query: queryParams,
             header: headers,
           },
-          body: patchOptions.content as never,
+          body: patchOptions.content,
         });
 
-      if (this.isErrorResponse(response) || !response.response.ok) {
-        throw createErrorFromApiResponse(
-          response.response.status,
-          response.error ?? null,
-          'patchPeriodicNote',
-        );
-      }
-
-      if (!response.data) {
-        throw new McpError(
-          JsonRpcErrorCode.InternalError,
-          'No data returned from Obsidian API',
-        );
-      }
-
-      const note = enrichNoteData(
-        (response as unknown as { data: NoteJson }).data,
-      );
-
-      this.logDebug(
-        'Patched periodic note',
-        this.createContext('patchPeriodicNote', appContext, {
-          period: params.period,
-          notePath: note.path,
-        }),
-      );
-
-      return note;
-    } catch (error) {
-      this.logError(
-        'Failed to patch periodic note',
-        this.createContext('patchPeriodicNote', appContext, {
-          period: params.period,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      );
-
-      if (error instanceof McpError) {
-        throw error;
-      }
-      throw handleNetworkError(error, 'patchPeriodicNote');
-    }
+        const note = this.extractNoteData(response.data);
+        return enrichNoteData(note);
+      },
+      {
+        period: params.period,
+        targetType: patchOptions.targetType,
+        target: patchOptions.target,
+        operation: patchOptions.operation,
+        year: params.year,
+        month: params.month,
+        day: params.day,
+      },
+    );
   }
 
   /**
@@ -310,83 +177,48 @@ export class PeriodicOperations extends OperationBase {
     appContext: RequestContext,
     params: PeriodicNoteParams,
   ): Promise<void> {
-    this.logInfo(
-      'Deleting periodic note',
-      this.createContext('deletePeriodicNote', appContext, {
+    // Validate periodic params
+    validatePeriodicParams(params);
+
+    return this.executeOperation(
+      'deletePeriodicNote',
+      appContext,
+      async () => {
+        // Use specific date endpoint if date params provided, otherwise current period
+        if (
+          params.year !== undefined ||
+          params.month !== undefined ||
+          params.day !== undefined
+        ) {
+          // Specific date endpoint requires all date components
+          // API expects non-null values, so use defaults if not provided
+          await this.apiDelete('/periodic/{period}/{year}/{month}/{day}/', {
+            params: {
+              path: {
+                period: params.period,
+                year: params.year ?? new Date().getFullYear(),
+                month: params.month ?? new Date().getMonth() + 1,
+                day: params.day ?? new Date().getDate(),
+              },
+            },
+          });
+        } else {
+          // Current period endpoint
+          await this.apiDelete('/periodic/{period}/', {
+            params: {
+              path: {
+                period: params.period,
+              },
+            },
+          });
+        }
+      },
+      {
         period: params.period,
         year: params.year,
         month: params.month,
         day: params.day,
-      }),
+      },
     );
-
-    try {
-      const client = this.getClient();
-
-      // Use specific date endpoint if date params provided, otherwise current period
-      if (
-        params.year !== undefined ||
-        params.month !== undefined ||
-        params.day !== undefined
-      ) {
-        const response = await client.DELETE(
-          '/periodic/{period}/{year}/{month}/{day}/',
-          {
-            params: {
-              path: {
-                period: params.period,
-                year: params.year ?? 0,
-                month: params.month ?? 0,
-                day: params.day ?? 0,
-              },
-            },
-          },
-        );
-
-        if (this.isErrorResponse(response) || !response.response.ok) {
-          throw createErrorFromApiResponse(
-            response.response.status,
-            response.error ?? null,
-            'deletePeriodicNote',
-          );
-        }
-      } else {
-        const response = await client.DELETE('/periodic/{period}/', {
-          params: {
-            path: {
-              period: params.period,
-            },
-          },
-        });
-
-        if (this.isErrorResponse(response) || !response.response.ok) {
-          throw createErrorFromApiResponse(
-            response.response.status,
-            response.error ?? null,
-            'deletePeriodicNote',
-          );
-        }
-      }
-
-      this.logDebug(
-        'Deleted periodic note',
-        this.createContext('deletePeriodicNote', appContext, {
-          period: params.period,
-        }),
-      );
-    } catch (error) {
-      this.logError(
-        'Failed to delete periodic note',
-        this.createContext('deletePeriodicNote', appContext, {
-          period: params.period,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        }),
-      );
-
-      if (error instanceof McpError) {
-        throw error;
-      }
-      throw handleNetworkError(error, 'deletePeriodicNote');
-    }
   }
 }

@@ -22,34 +22,26 @@ const DEFAULT_TIMEOUT = 10000; // 10 seconds
 const isBun = typeof Bun !== 'undefined';
 
 /**
- * Global flag to track if undici dispatcher has been configured
- */
-let undiciDispatcherConfigured = false;
-
-/**
  * Create custom fetch function with timeout and optional certificate validation
  * @param config - Obsidian configuration
  * @param timeout - Request timeout in milliseconds
+ * @param configureDispatcher - Whether to configure undici dispatcher (Node.js only)
  * @returns Custom fetch function
  */
 function createCustomFetch(
   config: ObsidianConfig,
   timeout: number = DEFAULT_TIMEOUT,
+  configureDispatcher = true,
 ) {
-  // For Node.js with HTTPS, configure undici's global dispatcher once
-  // This affects all undici/fetch calls globally
-  if (
-    !isBun &&
-    config.apiUrl.startsWith('https://') &&
-    !undiciDispatcherConfigured
-  ) {
+  // For Node.js with HTTPS, configure undici's global dispatcher if requested
+  // Note: This affects all undici/fetch calls globally
+  if (!isBun && config.apiUrl.startsWith('https://') && configureDispatcher) {
     const agent = new Agent({
       connect: {
         rejectUnauthorized: config.certValidation,
       },
     });
     setGlobalDispatcher(agent);
-    undiciDispatcherConfigured = true;
   }
 
   return async (
@@ -105,11 +97,13 @@ function createCustomFetch(
  * Create and configure an Obsidian API client
  * @param config - Obsidian configuration
  * @param timeout - Optional request timeout in milliseconds (default: 10000)
+ * @param configureDispatcher - Whether to configure undici dispatcher (Node.js only)
  * @returns Configured openapi-fetch client
  */
 export function createObsidianClient(
   config: ObsidianConfig,
   timeout: number = DEFAULT_TIMEOUT,
+  configureDispatcher = true,
 ): Client<paths> {
   // Validate configuration
   validateObsidianConfig(config.apiUrl, config.apiToken);
@@ -127,7 +121,7 @@ export function createObsidianClient(
   const client = createClient<paths>({
     baseUrl: config.apiUrl,
     headers,
-    fetch: createCustomFetch(config, timeout),
+    fetch: createCustomFetch(config, timeout, configureDispatcher),
   });
 
   return client;
@@ -139,10 +133,24 @@ export function createObsidianClient(
 export class ObsidianClient {
   private readonly client: Client<paths>;
   private readonly loggerInstance: typeof logger | undefined;
+  private readonly dispatcherConfigured: boolean = false;
 
   constructor(config: ObsidianConfig, loggerInstance?: typeof logger) {
     this.loggerInstance = loggerInstance;
-    this.client = createObsidianClient(config, DEFAULT_TIMEOUT);
+
+    // Configure dispatcher on first client creation
+    // Note: undici's dispatcher is inherently global, so this affects all subsequent requests
+    // If multiple clients with different SSL settings are needed, the last one configured wins
+    const shouldConfigureDispatcher =
+      !isBun && config.apiUrl.startsWith('https://');
+
+    this.client = createObsidianClient(
+      config,
+      DEFAULT_TIMEOUT,
+      shouldConfigureDispatcher,
+    );
+    this.dispatcherConfigured = shouldConfigureDispatcher;
+
     // Note: Initialization logging happens at provider level with proper RequestContext
   }
 
@@ -151,6 +159,14 @@ export class ObsidianClient {
    */
   getClient(): Client<paths> {
     return this.client;
+  }
+
+  /**
+   * Check if this client configured the undici dispatcher
+   * @returns True if dispatcher was configured by this instance
+   */
+  isDispatcherConfigured(): boolean {
+    return this.dispatcherConfigured;
   }
 
   /**
