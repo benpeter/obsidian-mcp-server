@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_search_dataview';
 const TOOL_TITLE = 'Dataview Search';
 const TOOL_DESCRIPTION =
-  'Execute Dataview Query Language (DQL) queries to search and filter notes in the Obsidian vault. Requires the Dataview plugin to be installed and enabled. Supports complex queries with WHERE clauses, sorting, and field selection for advanced note discovery and data extraction.';
+  'Executes Dataview Query Language (DQL) queries to search and filter notes in the Obsidian vault. This tool, which requires the Dataview plugin, supports complex queries with WHERE clauses, sorting, and field selection for advanced note discovery and data extraction.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: true,
@@ -36,10 +36,25 @@ const InputSchema = z
       .string()
       .min(1)
       .describe(
-        'Dataview Query Language (DQL) query string. Example: "LIST FROM #tag WHERE date > date(today) - dur(7 days)"',
+        'The Dataview Query Language (DQL) query string. Example: "LIST FROM #tag WHERE date > date(today) - dur(7 days)"',
       ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100)
+      .describe(
+        'The maximum number of results to return per page. [Default: 100, Max: 500]',
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe('The number of results to skip for pagination. [Default: 0]'),
   })
-  .describe('Parameters for Dataview DQL search.');
+  .describe('Parameters for a Dataview DQL search.');
 
 // Output Schema
 const OutputSchema = z
@@ -47,31 +62,46 @@ const OutputSchema = z
     query: z.string().describe('The DQL query that was executed.'),
     resultCount: z
       .number()
-      .describe('Total number of files matching the query.'),
+      .describe('The total number of files that matched the query.'),
     results: z
       .array(
         z.object({
-          filename: z.string().describe('Path to the file.'),
+          filename: z.string().describe('The path to the file.'),
           score: z
             .number()
             .optional()
-            .describe('Relevance score for this result (if available).'),
+            .describe('The relevance score for this result, if available.'),
           matches: z
             .array(
               z.object({
-                match: z.string().describe('Matched content or field value.'),
+                match: z
+                  .string()
+                  .describe('The matched content or field value.'),
                 context: z
                   .string()
-                  .describe('Context or additional information.'),
+                  .describe(
+                    'Additional context or information about the match.',
+                  ),
               }),
             )
             .optional()
-            .describe('Array of matches or field values from the query.'),
+            .describe('An array of matches or field values from the query.'),
         }),
       )
-      .describe('Array of files matching the DQL query.'),
+      .describe('An array of files that match the DQL query.'),
+    limit: z
+      .number()
+      .describe('The maximum number of results returned per page.'),
+    offset: z
+      .number()
+      .describe('The number of results that were skipped for pagination.'),
+    hasMore: z
+      .boolean()
+      .describe(
+        'Indicates whether more results are available on a subsequent page.',
+      ),
   })
-  .describe('Dataview query results.');
+  .describe('The results of the Dataview query.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -85,23 +115,36 @@ async function toolLogic(
   logger.debug('Executing Dataview DQL query', {
     ...appContext,
     query: input.query,
+    limit: input.limit,
+    offset: input.offset,
   });
 
   const obsidianProvider =
     container.resolve<IObsidianProvider>(ObsidianProvider);
-  const results = await obsidianProvider.searchDataview(
+  const allResults = await obsidianProvider.searchDataview(
     appContext,
     input.query,
   );
 
+  // Apply pagination
+  const totalResultCount = allResults.length;
+  const paginatedResults = allResults.slice(
+    input.offset,
+    input.offset + input.limit,
+  );
+  const hasMore = input.offset + input.limit < totalResultCount;
+
   return {
     query: input.query,
-    resultCount: results.length,
-    results: results.map((result) => ({
+    resultCount: totalResultCount,
+    results: paginatedResults.map((result) => ({
       filename: result.filename,
       score: result.score,
       matches: result.matches,
     })),
+    limit: input.limit,
+    offset: input.offset,
+    hasMore,
   };
 }
 
@@ -115,8 +158,17 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
     .codeBlock(result.query, 'dataview')
     .blankLine();
 
+  // Pagination info
+  const startIndex = result.offset + 1;
+  const endIndex = Math.min(
+    result.offset + result.results.length,
+    result.resultCount,
+  );
+
   // Summary
-  md.list([`**Files Found:** ${result.resultCount}`]).blankLine();
+  md.text(
+    `Showing **${startIndex}-${endIndex}** of **${result.resultCount}** files`,
+  ).blankLine();
 
   if (result.resultCount === 0) {
     md.text('_No results found for this query._')
@@ -154,10 +206,21 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
     }
   });
 
+  // Pagination navigation hint
+  if (result.hasMore) {
+    md.hr()
+      .blankLine()
+      .text(
+        `_**More results available.** Use \`offset: ${result.offset + result.limit}\` to get the next page._`,
+      )
+      .blankLine();
+  }
+
   // Footer tips
-  md.hr()
-    .blankLine()
-    .text('**Dataview Query Examples:**')
+  if (!result.hasMore) {
+    md.hr().blankLine();
+  }
+  md.text('**Dataview Query Examples:**')
     .blankLine()
     .list([
       '`LIST FROM #tag` - List all notes with a specific tag',

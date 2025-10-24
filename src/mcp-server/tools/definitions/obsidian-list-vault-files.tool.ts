@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_list_vault_files';
 const TOOL_TITLE = 'List Vault Files';
 const TOOL_DESCRIPTION =
-  'List files and directories at a specified path in the Obsidian vault. Returns an array of files and folders with their types, basenames, and extensions. Useful for exploring vault structure and discovering available notes. Defaults to root directory if no path specified.';
+  "Lists files and directories at a specified path in the Obsidian vault, returning an array of files and folders with their types, basenames, and extensions. This is useful for exploring the vault's structure and discovering notes. If no path is specified, it defaults to the root directory.";
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: true,
@@ -36,8 +36,23 @@ const InputSchema = z
       .string()
       .optional()
       .describe(
-        'Directory path to list (relative to vault root). Omit or use empty string for vault root.',
+        'The directory path to list, relative to the vault root. Omit this or use an empty string to list the root directory.',
       ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100)
+      .describe(
+        'The maximum number of items to return per page. [Default: 100, Max: 500]',
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe('The number of items to skip for pagination. [Default: 0]'),
   })
   .describe('Parameters for listing vault files.');
 
@@ -46,28 +61,48 @@ const OutputSchema = z
   .object({
     path: z
       .string()
-      .describe('The directory path that was listed (empty string for root).'),
+      .describe(
+        'The directory path that was listed. An empty string indicates the vault root.',
+      ),
     files: z
       .array(
         z.object({
-          path: z.string().describe('Full path of the file or folder.'),
+          path: z.string().describe('The full path of the file or folder.'),
           type: z
             .enum(['file', 'folder'])
-            .describe('Whether this is a file or folder.'),
+            .describe('Indicates whether the item is a file or a folder.'),
           basename: z
             .string()
-            .describe('Base name without extension (for files).'),
+            .describe(
+              'The base name of the item, without the extension for files.',
+            ),
           extension: z
             .string()
             .optional()
-            .describe('File extension (only for files).'),
+            .describe('The file extension, if the item is a file.'),
         }),
       )
-      .describe('Array of files and folders at the specified path.'),
-    fileCount: z.number().describe('Number of files found.'),
-    folderCount: z.number().describe('Number of folders found.'),
+      .describe('An array of files and folders found at the specified path.'),
+    fileCount: z.number().describe('The number of files on the current page.'),
+    folderCount: z
+      .number()
+      .describe('The number of folders on the current page.'),
+    totalCount: z
+      .number()
+      .describe('The total number of items available at this path.'),
+    limit: z
+      .number()
+      .describe('The maximum number of items returned per page.'),
+    offset: z
+      .number()
+      .describe('The number of items that were skipped for pagination.'),
+    hasMore: z
+      .boolean()
+      .describe(
+        'Indicates whether more items are available on a subsequent page.',
+      ),
   })
-  .describe('Vault directory listing.');
+  .describe('The directory listing for a path in the vault.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -81,19 +116,32 @@ async function toolLogic(
   logger.debug('Listing vault files', {
     ...appContext,
     path: input.path || '(root)',
+    limit: input.limit,
+    offset: input.offset,
   });
 
   const obsidianProvider =
     container.resolve<IObsidianProvider>(ObsidianProvider);
-  const files = await obsidianProvider.listVaultFiles(appContext, input.path);
+  const allFiles = await obsidianProvider.listVaultFiles(
+    appContext,
+    input.path,
+  );
 
-  // Count files and folders
-  const fileCount = files.filter((f) => f.type === 'file').length;
-  const folderCount = files.filter((f) => f.type === 'folder').length;
+  // Apply pagination
+  const totalCount = allFiles.length;
+  const paginatedFiles = allFiles.slice(
+    input.offset,
+    input.offset + input.limit,
+  );
+  const hasMore = input.offset + input.limit < totalCount;
+
+  // Count files and folders in the current page
+  const fileCount = paginatedFiles.filter((f) => f.type === 'file').length;
+  const folderCount = paginatedFiles.filter((f) => f.type === 'folder').length;
 
   return {
     path: input.path || '',
-    files: files.map((f) => ({
+    files: paginatedFiles.map((f) => ({
       path: f.path,
       type: f.type,
       basename: f.basename,
@@ -101,6 +149,10 @@ async function toolLogic(
     })),
     fileCount,
     folderCount,
+    totalCount,
+    limit: input.limit,
+    offset: input.offset,
+    hasMore,
   };
 }
 
@@ -110,9 +162,19 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
     .h1(`Vault Listing: ${result.path || '(root)'}`)
     .blankLine();
 
+  // Pagination info
+  const startIndex = result.offset + 1;
+  const endIndex = Math.min(
+    result.offset + result.files.length,
+    result.totalCount,
+  );
+
   // Summary stats
   md.text(
-    `Found **${result.fileCount} files** and **${result.folderCount} folders**`,
+    `Showing **${startIndex}-${endIndex}** of **${result.totalCount}** items`,
+  ).blankLine();
+  md.text(
+    `**${result.fileCount} files** and **${result.folderCount} folders** in this page`,
   ).blankLine();
 
   if (result.files.length === 0) {
@@ -140,6 +202,13 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
       const ext = file.extension ? ` (${file.extension})` : '';
       md.text(`- 📄 ${file.basename}${ext}\n`);
     });
+  }
+
+  // Pagination navigation hint
+  if (result.hasMore) {
+    md.blankLine().text(
+      `_**More items available.** Use \`offset: ${result.offset + result.limit}\` to get the next page._`,
+    );
   }
 
   return [{ type: 'text', text: md.build() }];

@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_search_jsonlogic';
 const TOOL_TITLE = 'JsonLogic Search';
 const TOOL_DESCRIPTION =
-  'Execute advanced programmatic searches using JsonLogic queries. Supports complex logical operations, glob patterns, regular expressions, and path matching for sophisticated note filtering and discovery. Most powerful search option for programmatic vault exploration.';
+  'Executes advanced programmatic searches using JsonLogic queries, supporting complex logical operations, glob patterns, regular expressions, and path matching for sophisticated note filtering. This is the most powerful search option for programmatic vault exploration.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: true,
@@ -35,10 +35,25 @@ const InputSchema = z
     query: z
       .record(z.unknown())
       .describe(
-        'JsonLogic query object for advanced filtering. Supports operators like "and", "or", "glob", "regexp", "===", ">", "<", "in", etc. Example: {"and": [{"glob": {"path": "folder/*.md"}}, {"regexp": {"content": "pattern"}}]}',
+        'A JsonLogic query object for advanced filtering. It supports operators like "and", "or", "glob", "regexp", "===", ">", "<", "in", etc. Example: {"and": [{"glob": {"path": "folder/*.md"}}, {"regexp": {"content": "pattern"}}]}',
       ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100)
+      .describe(
+        'The maximum number of results to return per page. [Default: 100, Max: 500]',
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe('The number of results to skip for pagination. [Default: 0]'),
   })
-  .describe('Parameters for JsonLogic search.');
+  .describe('Parameters for a JsonLogic search.');
 
 // Output Schema
 const OutputSchema = z
@@ -48,29 +63,42 @@ const OutputSchema = z
       .describe('The JsonLogic query that was executed.'),
     resultCount: z
       .number()
-      .describe('Total number of files matching the query.'),
+      .describe('The total number of files that matched the query.'),
     results: z
       .array(
         z.object({
-          filename: z.string().describe('Path to the file.'),
+          filename: z.string().describe('The path to the file.'),
           score: z
             .number()
             .optional()
-            .describe('Relevance score for this result (if available).'),
+            .describe('The relevance score for this result, if available.'),
           matches: z
             .array(
               z.object({
-                match: z.string().describe('Matched content.'),
-                context: z.string().describe('Context around the match.'),
+                match: z.string().describe('The content that was matched.'),
+                context: z
+                  .string()
+                  .describe('The context surrounding the match.'),
               }),
             )
             .optional()
-            .describe('Array of matches with context.'),
+            .describe('An array of matches, each with its context.'),
         }),
       )
-      .describe('Array of files matching the JsonLogic query.'),
+      .describe('An array of files that match the JsonLogic query.'),
+    limit: z
+      .number()
+      .describe('The maximum number of results returned per page.'),
+    offset: z
+      .number()
+      .describe('The number of results that were skipped for pagination.'),
+    hasMore: z
+      .boolean()
+      .describe(
+        'Indicates whether more results are available on a subsequent page.',
+      ),
   })
-  .describe('JsonLogic query results.');
+  .describe('The results of the JsonLogic query.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -84,23 +112,36 @@ async function toolLogic(
   logger.debug('Executing JsonLogic query', {
     ...appContext,
     queryKeys: Object.keys(input.query),
+    limit: input.limit,
+    offset: input.offset,
   });
 
   const obsidianProvider =
     container.resolve<IObsidianProvider>(ObsidianProvider);
-  const results = await obsidianProvider.searchJsonLogic(
+  const allResults = await obsidianProvider.searchJsonLogic(
     appContext,
     input.query,
   );
 
+  // Apply pagination
+  const totalResultCount = allResults.length;
+  const paginatedResults = allResults.slice(
+    input.offset,
+    input.offset + input.limit,
+  );
+  const hasMore = input.offset + input.limit < totalResultCount;
+
   return {
     query: input.query,
-    resultCount: results.length,
-    results: results.map((result) => ({
+    resultCount: totalResultCount,
+    results: paginatedResults.map((result) => ({
       filename: result.filename,
       score: result.score,
       matches: result.matches,
     })),
+    limit: input.limit,
+    offset: input.offset,
+    hasMore,
   };
 }
 
@@ -114,8 +155,17 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
     .codeBlock(JSON.stringify(result.query, null, 2), 'json')
     .blankLine();
 
+  // Pagination info
+  const startIndex = result.offset + 1;
+  const endIndex = Math.min(
+    result.offset + result.results.length,
+    result.resultCount,
+  );
+
   // Summary
-  md.list([`**Files Found:** ${result.resultCount}`]).blankLine();
+  md.text(
+    `Showing **${startIndex}-${endIndex}** of **${result.resultCount}** files`,
+  ).blankLine();
 
   if (result.resultCount === 0) {
     md.text('_No results found for this query._');
@@ -153,10 +203,21 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
     }
   });
 
+  // Pagination navigation hint
+  if (result.hasMore) {
+    md.hr()
+      .blankLine()
+      .text(
+        `_**More results available.** Use \`offset: ${result.offset + result.limit}\` to get the next page._`,
+      )
+      .blankLine();
+  }
+
   // Footer with examples
-  md.hr()
-    .blankLine()
-    .text('**JsonLogic Query Examples:**')
+  if (!result.hasMore) {
+    md.hr().blankLine();
+  }
+  md.text('**JsonLogic Query Examples:**')
     .blankLine()
     .text('**Path glob pattern:**')
     .blankLine()

@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_list_commands';
 const TOOL_TITLE = 'List Commands';
 const TOOL_DESCRIPTION =
-  'List all available commands in Obsidian, including both core commands and those provided by installed plugins. Returns command IDs and names that can be used with the execute command tool.';
+  'Lists all available commands in Obsidian, including core commands and those from installed plugins. It returns command IDs and names that can be used with the `obsidian_execute_command` tool.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: true,
@@ -36,29 +36,59 @@ const InputSchema = z
       .string()
       .optional()
       .describe(
-        'Optional filter string to search for specific commands by name or ID (case-insensitive).',
+        'An optional filter string to search for specific commands by name or ID. The search is case-insensitive.',
       ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100)
+      .describe(
+        'The maximum number of commands to return per page. [Default: 100, Max: 500]',
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe('The number of commands to skip for pagination. [Default: 0]'),
   })
   .describe('Parameters for listing Obsidian commands.');
 
 // Output Schema
 const OutputSchema = z
   .object({
-    commandCount: z.number().describe('Total number of commands available.'),
+    commandCount: z
+      .number()
+      .describe('The total number of commands available.'),
     filteredCount: z
       .number()
       .optional()
-      .describe('Number of commands after filtering (if filter applied).'),
+      .describe(
+        'The number of commands after filtering, if a filter was applied.',
+      ),
     commands: z
       .array(
         z.object({
-          id: z.string().describe('Unique command identifier.'),
-          name: z.string().describe('Human-readable command name.'),
+          id: z.string().describe('The unique identifier for the command.'),
+          name: z.string().describe('The human-readable name of the command.'),
         }),
       )
-      .describe('Array of available commands.'),
+      .describe('An array of the available commands.'),
+    limit: z
+      .number()
+      .describe('The maximum number of commands returned per page.'),
+    offset: z
+      .number()
+      .describe('The number of commands that were skipped for pagination.'),
+    hasMore: z
+      .boolean()
+      .describe(
+        'Indicates whether more commands are available on a subsequent page.',
+      ),
   })
-  .describe('Available Obsidian commands.');
+  .describe('The list of available Obsidian commands.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -72,6 +102,8 @@ async function toolLogic(
   logger.debug('Listing Obsidian commands', {
     ...appContext,
     filter: input.filter,
+    limit: input.limit,
+    offset: input.offset,
   });
 
   const obsidianProvider =
@@ -89,19 +121,38 @@ async function toolLogic(
     );
   }
 
+  // Apply pagination
+  const totalAvailable = commands.length;
+  const paginatedCommands = commands.slice(
+    input.offset,
+    input.offset + input.limit,
+  );
+  const hasMore = input.offset + input.limit < totalAvailable;
+
   return {
     commandCount: allCommands.length,
-    ...(input.filter && { filteredCount: commands.length }),
-    commands: commands.map((cmd) => ({
+    ...(input.filter && { filteredCount: totalAvailable }),
+    commands: paginatedCommands.map((cmd) => ({
       id: cmd.id,
       name: cmd.name,
     })),
+    limit: input.limit,
+    offset: input.offset,
+    hasMore,
   };
 }
 
 // Response formatter
 function responseFormatter(result: ToolResponse): ContentBlock[] {
   const md = markdown().h1('Obsidian Commands').blankLine();
+
+  // Pagination info
+  const totalCommands = result.filteredCount ?? result.commandCount;
+  const startIndex = result.offset + 1;
+  const endIndex = Math.min(
+    result.offset + result.commands.length,
+    totalCommands,
+  );
 
   // Summary
   if (result.filteredCount !== undefined) {
@@ -111,6 +162,11 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
   } else {
     md.text(`Found **${result.commandCount}** commands`).blankLine();
   }
+
+  // Pagination status
+  md.text(
+    `Showing **${startIndex}-${endIndex}** of **${totalCommands}** commands`,
+  ).blankLine();
 
   if (result.commands.length === 0) {
     md.text('_No commands found matching the filter._');
@@ -126,6 +182,13 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
   );
 
   md.text(table).blankLine();
+
+  // Pagination navigation hint
+  if (result.hasMore) {
+    md.text(
+      `_**More results available.** Use \`offset: ${result.offset + result.limit}\` to get the next page._`,
+    ).blankLine();
+  }
 
   // Footer tip
   md.hr()

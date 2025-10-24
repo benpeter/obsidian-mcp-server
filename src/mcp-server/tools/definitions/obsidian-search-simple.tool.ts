@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_search_simple';
 const TOOL_TITLE = 'Simple Search';
 const TOOL_DESCRIPTION =
-  'Perform a fast text search across all notes in the Obsidian vault. Returns matching files with context snippets showing where the query appears. Supports basic text matching for quick discovery of notes containing specific terms or phrases.';
+  'Performs a fast text search across all notes in the Obsidian vault, returning matching files with context snippets showing where the query appears. This tool supports basic text matching, making it ideal for quickly discovering notes that contain specific terms or phrases.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: true,
@@ -35,53 +35,81 @@ const InputSchema = z
     query: z
       .string()
       .min(1)
-      .describe('Search query string to find in vault notes.'),
+      .describe('The search query string to find in the vault notes.'),
     contextLength: z
       .number()
       .int()
       .positive()
       .optional()
       .describe(
-        'Number of characters of context to include around each match (default: 100).',
+        'The number of characters of context to include around each match. [Default: 100]',
       ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100)
+      .describe(
+        'The maximum number of results to return per page. [Default: 100, Max: 500]',
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .default(0)
+      .describe('The number of results to skip for pagination. [Default: 0]'),
   })
-  .describe('Parameters for simple text search.');
+  .describe('Parameters for a simple text search.');
 
 // Output Schema
 const OutputSchema = z
   .object({
     query: z.string().describe('The search query that was executed.'),
-    resultCount: z.number().describe('Total number of files with matches.'),
+    resultCount: z.number().describe('The total number of files with matches.'),
     totalMatches: z
       .number()
-      .describe('Total number of matches across all files.'),
+      .describe('The total number of matches across all files.'),
     results: z
       .array(
         z.object({
-          filename: z.string().describe('Path to the file containing matches.'),
+          filename: z
+            .string()
+            .describe('The path to the file containing the matches.'),
           score: z
             .number()
             .optional()
-            .describe('Relevance score for this result (if available).'),
+            .describe('The relevance score for this result, if available.'),
           matchCount: z
             .number()
-            .describe('Number of matches found in this file.'),
+            .describe('The number of matches found in this file.'),
           matches: z
             .array(
               z.object({
-                match: z.string().describe('The matched text.'),
+                match: z.string().describe('The text that was matched.'),
                 context: z
                   .string()
-                  .describe('Surrounding context for the match.'),
+                  .describe('The surrounding context for the match.'),
               }),
             )
             .optional()
-            .describe('Array of individual matches with context.'),
+            .describe('An array of individual matches, each with its context.'),
         }),
       )
-      .describe('Array of search results.'),
+      .describe('An array of search results.'),
+    limit: z
+      .number()
+      .describe('The maximum number of results returned per page.'),
+    offset: z
+      .number()
+      .describe('The number of results that were skipped for pagination.'),
+    hasMore: z
+      .boolean()
+      .describe(
+        'Indicates whether more results are available on a subsequent page.',
+      ),
   })
-  .describe('Search results.');
+  .describe('The results of the search.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -96,20 +124,30 @@ async function toolLogic(
     ...appContext,
     query: input.query,
     contextLength: input.contextLength,
+    limit: input.limit,
+    offset: input.offset,
   });
 
   const obsidianProvider =
     container.resolve<IObsidianProvider>(ObsidianProvider);
-  const results = await obsidianProvider.searchSimple(appContext, {
+  const allResults = await obsidianProvider.searchSimple(appContext, {
     query: input.query,
     ...(input.contextLength !== undefined && {
       contextLength: input.contextLength,
     }),
   });
 
-  // Calculate total matches
+  // Apply pagination
+  const totalResultCount = allResults.length;
+  const paginatedResults = allResults.slice(
+    input.offset,
+    input.offset + input.limit,
+  );
+  const hasMore = input.offset + input.limit < totalResultCount;
+
+  // Calculate total matches (only for paginated results)
   let totalMatches = 0;
-  const enrichedResults = results.map((result) => {
+  const enrichedResults = paginatedResults.map((result) => {
     const matchCount = result.matches?.length || 0;
     totalMatches += matchCount;
 
@@ -123,9 +161,12 @@ async function toolLogic(
 
   return {
     query: input.query,
-    resultCount: results.length,
+    resultCount: totalResultCount,
     totalMatches,
     results: enrichedResults,
+    limit: input.limit,
+    offset: input.offset,
+    hasMore,
   };
 }
 
@@ -133,11 +174,20 @@ async function toolLogic(
 function responseFormatter(result: ToolResponse): ContentBlock[] {
   const md = markdown().h1('Search Results').blankLine();
 
+  // Pagination info
+  const startIndex = result.offset + 1;
+  const endIndex = Math.min(
+    result.offset + result.results.length,
+    result.resultCount,
+  );
+
   // Summary
   md.text(`**Query:** "${result.query}"`).blankLine();
+  md.text(
+    `Showing **${startIndex}-${endIndex}** of **${result.resultCount}** files`,
+  ).blankLine();
   md.list([
-    `**Files Found:** ${result.resultCount}`,
-    `**Total Matches:** ${result.totalMatches}`,
+    `**Total Matches:** ${result.totalMatches} (in this page)`,
   ]).blankLine();
 
   if (result.resultCount === 0) {
@@ -177,12 +227,12 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
     md.blankLine();
   });
 
-  // Footer tip
-  if (result.resultCount > 10) {
+  // Pagination navigation hint
+  if (result.hasMore) {
     md.hr()
       .blankLine()
       .text(
-        `_Showing ${Math.min(result.resultCount, 10)} of ${result.resultCount} files. Consider refining your search query for more targeted results._`,
+        `_**More results available.** Use \`offset: ${result.offset + result.limit}\` to get the next page._`,
       );
   }
 
