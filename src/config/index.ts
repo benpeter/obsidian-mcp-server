@@ -245,6 +245,15 @@ const ConfigSchema = z.object({
           return Boolean(val);
         }, z.boolean())
         .default(false),
+      commandToolsEnabled: z
+        .preprocess((val) => {
+          if (typeof val === 'string') {
+            const lower = val.toLowerCase().trim();
+            return lower === 'true' || lower === '1' || lower === 'yes';
+          }
+          return Boolean(val);
+        }, z.boolean())
+        .default(true),
     })
     .optional(),
 });
@@ -371,6 +380,7 @@ const parseConfig = () => {
             apiUrl: env.OBSIDIAN_BASE_URL,
             apiToken: env.OBSIDIAN_API_KEY,
             certValidation: env.OBSIDIAN_VERIFY_SSL,
+            commandToolsEnabled: env.OBSIDIAN_COMMAND_TOOLS_ENABLED,
           }
         : undefined,
     // The following fields will be derived and are not directly from env

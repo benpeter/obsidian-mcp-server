@@ -5,15 +5,21 @@
  * @module src/mcp-server/tools/tool-registration
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { type DependencyContainer, injectable, injectAll } from 'tsyringe';
+import {
+  type DependencyContainer,
+  inject,
+  injectable,
+  injectAll,
+} from 'tsyringe';
 import { ZodObject, type ZodRawShape } from 'zod';
 
-import { ToolDefinitions } from '@/container/index.js';
+import { AppConfig, ToolDefinitions } from '@/container/index.js';
 import { JsonRpcErrorCode } from '@/types-global/errors.js';
 import { ErrorHandler, logger, requestContextService } from '@/utils/index.js';
 import { allToolDefinitions } from '@/mcp-server/tools/definitions/index.js';
 import type { ToolDefinition } from '@/mcp-server/tools/utils/index.js';
 import { createMcpToolHandler } from '@/mcp-server/tools/utils/index.js';
+import type { AppConfig as AppConfigType } from '@/config/index.js';
 
 @injectable()
 export class ToolRegistry {
@@ -23,6 +29,7 @@ export class ToolRegistry {
       ZodObject<ZodRawShape>,
       ZodObject<ZodRawShape>
     >[],
+    @inject(AppConfig) private config: AppConfigType,
   ) {}
 
   /**
@@ -33,8 +40,32 @@ export class ToolRegistry {
     const context = requestContextService.createRequestContext({
       operation: 'ToolRegistry.registerAll',
     });
-    logger.info(`Registering ${this.toolDefs.length} tool(s)...`, context);
-    for (const toolDef of this.toolDefs) {
+
+    // Filter out command tools if disabled
+    const commandToolNames = [
+      'obsidian_execute_command',
+      'obsidian_list_commands',
+    ];
+    const commandToolsEnabled =
+      this.config.obsidian?.commandToolsEnabled ?? true;
+
+    let toolsToRegister = this.toolDefs;
+    if (!commandToolsEnabled) {
+      toolsToRegister = this.toolDefs.filter(
+        (tool) => !commandToolNames.includes(tool.name),
+      );
+
+      const skippedCount = this.toolDefs.length - toolsToRegister.length;
+      if (skippedCount > 0) {
+        logger.notice(
+          `Obsidian command tools are disabled. Skipping ${skippedCount} tool(s) for security.`,
+          { ...context, skippedTools: commandToolNames },
+        );
+      }
+    }
+
+    logger.info(`Registering ${toolsToRegister.length} tool(s)...`, context);
+    for (const toolDef of toolsToRegister) {
       await this.registerTool(server, toolDef);
     }
   }
