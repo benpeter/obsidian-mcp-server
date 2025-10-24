@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_create_note';
 const TOOL_TITLE = 'Create Note';
 const TOOL_DESCRIPTION =
-  'Create a new note or update an existing note in the Obsidian vault. If the note already exists and overwrite is false, the operation will fail. Automatically creates parent directories if needed. Returns the created/updated note metadata.';
+  "Creates a new note or updates an existing one in the Obsidian vault. It automatically creates parent directories if they don't exist and returns metadata for the created/updated note. If the note exists and `overwrite` is disabled, the operation will fail.";
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -37,19 +37,19 @@ const InputSchema = z
       .string()
       .min(1)
       .describe(
-        'Path where the note should be created, relative to vault root. Can include or omit .md extension (e.g., "folder/note" or "folder/note.md").',
+        'The path where the note should be created, relative to the vault\'s root. You can include or omit the `.md` extension (e.g., "folder/note").',
       ),
     content: z
       .string()
       .min(0)
       .describe(
-        'Content for the note. Can include frontmatter in YAML format.',
+        'The content for the note. This can include frontmatter in YAML format.',
       ),
     overwrite: z
       .boolean()
       .default(false)
       .describe(
-        'Whether to overwrite the note if it already exists. If false and note exists, operation will fail.',
+        'Set to `true` to overwrite the note if it already exists. If `false` and the note exists, the operation will fail to prevent data loss. [Default: false]',
       ),
   })
   .describe('Parameters for creating a new note.');
@@ -57,18 +57,18 @@ const InputSchema = z
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('Path of the created/updated note.'),
+    path: z.string().describe('The path of the created or updated note.'),
     created: z
       .boolean()
       .describe(
-        'Whether a new note was created (true) or existing note was updated (false).',
+        'Indicates whether a new note was created (`true`) or an existing note was updated (`false`).',
       ),
     contentLength: z
       .number()
-      .describe('Length of the note content in characters.'),
-    size: z.number().describe('File size in bytes.'),
+      .describe("The length of the note's content in characters."),
+    size: z.number().describe('The file size in bytes.'),
   })
-  .describe('Note creation result.');
+  .describe('The result of the note creation operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -104,7 +104,7 @@ async function toolLogic(
     path: note.path,
     created: isNew,
     contentLength: note.content.length,
-    size: note.stat?.size || 0,
+    size: note.stat?.size ?? note.content.length,
   };
 }
 

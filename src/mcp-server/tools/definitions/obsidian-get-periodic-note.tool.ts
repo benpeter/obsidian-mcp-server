@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_get_periodic_note';
 const TOOL_TITLE = 'Get Periodic Note';
 const TOOL_DESCRIPTION =
-  'Retrieve a periodic note (daily, weekly, monthly, quarterly, or yearly) from Obsidian. Can get the current period note or a specific date by providing year, month, and/or day parameters. Requires the Periodic Notes plugin or compatible plugin.';
+  'Retrieves a periodic note (daily, weekly, monthly, quarterly, or yearly) from Obsidian. You can get the note for the current period or a specific date by providing year, month, and/or day parameters. This tool requires the Periodic Notes plugin or a compatible alternative to be installed.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: true,
@@ -35,7 +35,7 @@ const InputSchema = z
     period: z
       .enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly'])
       .describe(
-        'Type of periodic note to retrieve: daily, weekly, monthly, quarterly, or yearly.',
+        'The type of periodic note to retrieve, such as daily, weekly, or monthly.',
       ),
     year: z
       .number()
@@ -44,7 +44,7 @@ const InputSchema = z
       .max(2100)
       .optional()
       .describe(
-        'Year for the periodic note (e.g., 2024). Omit for current period.',
+        'The year of the periodic note (e.g., 2024). Omit to use the current period.',
       ),
     month: z
       .number()
@@ -53,7 +53,7 @@ const InputSchema = z
       .max(12)
       .optional()
       .describe(
-        'Month for the periodic note (1-12). Required for monthly/quarterly if year is specified.',
+        'The month of the periodic note (1-12). This is required for monthly or quarterly notes when a year is specified.',
       ),
     day: z
       .number()
@@ -62,13 +62,13 @@ const InputSchema = z
       .max(31)
       .optional()
       .describe(
-        'Day of month for the periodic note (1-31). Required for daily/weekly if year/month specified.',
+        'The day of the month for the periodic note (1-31). This is required for daily or weekly notes when a year and month are specified.',
       ),
     includeMetadata: z
       .boolean()
       .default(true)
       .describe(
-        'Whether to include parsed metadata (tags, headings, wikilinks) in the response.',
+        'Set to `true` to include parsed metadata like tags, headings, and wikilinks in the response. [Default: true]',
       ),
   })
   .describe('Parameters for retrieving a periodic note.');
@@ -76,50 +76,65 @@ const InputSchema = z
 // Output Schema
 const OutputSchema = z
   .object({
-    period: z.string().describe('Type of periodic note retrieved.'),
-    path: z.string().describe('File path of the periodic note.'),
-    content: z.string().describe('Full content of the note.'),
+    period: z
+      .string()
+      .describe('The type of periodic note that was retrieved.'),
+    path: z.string().describe('The file path of the periodic note.'),
+    content: z.string().describe('The full content of the note as a string.'),
     frontmatter: z
       .record(z.unknown())
       .optional()
-      .describe('Parsed YAML frontmatter if present.'),
+      .describe('The parsed YAML frontmatter, if it is present.'),
     tags: z
       .array(z.string())
       .optional()
-      .describe('Array of tags found in the note.'),
+      .describe('An array of tags found in the note.'),
     headings: z
       .array(
         z.object({
-          level: z.number().describe('Heading level (1-6).'),
-          text: z.string().describe('Heading text content.'),
+          level: z.number().describe('The heading level, from 1 to 6.'),
+          text: z.string().describe('The text content of the heading.'),
         }),
       )
       .optional()
-      .describe('Array of headings found in the note.'),
+      .describe('An array of headings found in the note.'),
     wikilinks: z
       .array(z.string())
       .optional()
-      .describe('Array of wikilink targets found in the note.'),
+      .describe('An array of wikilink targets found in the note.'),
     stat: z
       .object({
-        ctime: z.number().describe('Creation time (milliseconds since epoch).'),
+        ctime: z
+          .number()
+          .describe('The creation time, as milliseconds since epoch.'),
         mtime: z
           .number()
-          .describe('Modification time (milliseconds since epoch).'),
-        size: z.number().describe('File size in bytes.'),
+          .describe('The modification time, as milliseconds since epoch.'),
+        size: z.number().describe('The file size in bytes.'),
       })
       .optional()
-      .describe('File statistics.'),
+      .describe('File statistics for the note.'),
     dateParams: z
       .object({
-        year: z.number().optional().describe('Year used for retrieval.'),
-        month: z.number().optional().describe('Month used for retrieval.'),
-        day: z.number().optional().describe('Day used for retrieval.'),
+        year: z
+          .number()
+          .optional()
+          .describe('The year that was used for retrieval.'),
+        month: z
+          .number()
+          .optional()
+          .describe('The month that was used for retrieval.'),
+        day: z
+          .number()
+          .optional()
+          .describe('The day that was used for retrieval.'),
       })
       .optional()
-      .describe('Date parameters used (if specified).'),
+      .describe(
+        'The date parameters used for the operation, if they were specified.',
+      ),
   })
-  .describe('Periodic note data.');
+  .describe('The data of the periodic note.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;

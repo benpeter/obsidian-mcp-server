@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_patch_active_note';
 const TOOL_TITLE = 'Patch Active Note';
 const TOOL_DESCRIPTION =
-  'Perform surgical updates to specific sections of the currently active note using PATCH operations. Supports targeting headings, blocks, or frontmatter with various insertion strategies (insert before/after start/end, or replace). Enables precise content modifications without rewriting the entire note.';
+  'Performs surgical updates to specific sections of the currently active note using PATCH operations. This tool supports targeting headings, blocks, or frontmatter with various insertion strategies (such as inserting before or after, or replacing), enabling precise modifications without rewriting the entire note.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -36,39 +36,39 @@ const InputSchema = z
     operation: z
       .enum(['append', 'prepend', 'replace'])
       .describe(
-        'PATCH operation type: append (add after target), prepend (add before target), or replace (overwrite target).',
+        'The PATCH operation to perform: `append` (add after target), `prepend` (add before target), or `replace` (overwrite target).',
       ),
     targetType: z
       .enum(['heading', 'block', 'frontmatter'])
       .describe(
-        'Type of target to patch: heading (markdown heading), block (block reference), or frontmatter (YAML frontmatter).',
+        'The type of target to patch, which can be a `heading` (markdown heading), `block` (block reference), or `frontmatter` (YAML frontmatter).',
       ),
     target: z
       .string()
       .min(1)
       .describe(
-        'Target identifier: heading text for headings, block ID for blocks, or property key for frontmatter.',
+        'The identifier for the target, such as the heading text for headings, the block ID for blocks, or the property key for frontmatter.',
       ),
     content: z
       .string()
       .min(0)
-      .describe('Content to insert or use for replacement.'),
+      .describe('The content to be inserted or used for replacement.'),
   })
   .describe('Parameters for patching the active note.');
 
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('File path of the patched note.'),
-    operation: z.string().describe('PATCH operation that was performed.'),
-    targetType: z.string().describe('Type of target that was patched.'),
-    target: z.string().describe('Target identifier that was modified.'),
+    path: z.string().describe('The file path of the patched note.'),
+    operation: z.string().describe('The PATCH operation that was performed.'),
+    targetType: z.string().describe('The type of target that was patched.'),
+    target: z.string().describe('The target identifier that was modified.'),
     contentLength: z
       .number()
-      .describe('Total length of the note after patching.'),
-    size: z.number().describe('New file size in bytes.'),
+      .describe('The total length of the note after patching.'),
+    size: z.number().describe('The new file size in bytes.'),
   })
-  .describe('Patch operation result.');
+  .describe('The result of the patch operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;

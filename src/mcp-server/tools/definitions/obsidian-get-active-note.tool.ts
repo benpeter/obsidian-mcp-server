@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_get_active_note';
 const TOOL_TITLE = 'Get Active Note';
 const TOOL_DESCRIPTION =
-  'Retrieve the currently active note in Obsidian with its content and metadata. Returns the full note content, frontmatter, path, and file statistics. Read-only operation with no side effects.';
+  'Retrieves the currently active note in Obsidian, including its content and metadata. This is a read-only operation that returns the full note content, frontmatter, path, and file statistics without any side effects.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: true,
@@ -36,7 +36,7 @@ const InputSchema = z
       .boolean()
       .default(true)
       .describe(
-        'Whether to include parsed metadata (tags, headings, wikilinks) in the response.',
+        'Set to `true` to include parsed metadata like tags, headings, and wikilinks in the response. [Default: true]',
       ),
   })
   .describe('Parameters for retrieving the active note.');
@@ -44,41 +44,43 @@ const InputSchema = z
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('File path of the active note.'),
-    content: z.string().describe('Full content of the note.'),
+    path: z.string().describe('The file path of the active note.'),
+    content: z.string().describe('The full content of the note as a string.'),
     frontmatter: z
       .record(z.unknown())
       .optional()
-      .describe('Parsed YAML frontmatter if present.'),
+      .describe('The parsed YAML frontmatter, if it is present.'),
     tags: z
       .array(z.string())
       .optional()
-      .describe('Array of tags found in the note.'),
+      .describe('An array of tags found in the note.'),
     headings: z
       .array(
         z.object({
-          level: z.number().describe('Heading level (1-6).'),
-          text: z.string().describe('Heading text content.'),
+          level: z.number().describe('The heading level, from 1 to 6.'),
+          text: z.string().describe('The text content of the heading.'),
         }),
       )
       .optional()
-      .describe('Array of headings found in the note.'),
+      .describe('An array of headings found in the note.'),
     wikilinks: z
       .array(z.string())
       .optional()
-      .describe('Array of wikilink targets found in the note.'),
+      .describe('An array of wikilink targets found in the note.'),
     stat: z
       .object({
-        ctime: z.number().describe('Creation time (milliseconds since epoch).'),
+        ctime: z
+          .number()
+          .describe('The creation time, as milliseconds since epoch.'),
         mtime: z
           .number()
-          .describe('Modification time (milliseconds since epoch).'),
-        size: z.number().describe('File size in bytes.'),
+          .describe('The modification time, as milliseconds since epoch.'),
+        size: z.number().describe('The file size in bytes.'),
       })
       .optional()
-      .describe('File statistics.'),
+      .describe('File statistics for the note.'),
   })
-  .describe('Active note data.');
+  .describe('The data of the active note.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;

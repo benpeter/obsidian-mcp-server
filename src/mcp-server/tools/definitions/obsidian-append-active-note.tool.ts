@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_append_active_note';
 const TOOL_TITLE = 'Append to Active Note';
 const TOOL_DESCRIPTION =
-  'Append content to the end of the currently active note in Obsidian. Content is added after existing content with a newline separator. Non-destructive operation that preserves existing content.';
+  'Appends content to the end of the currently active note in Obsidian. This is a non-destructive operation that preserves existing content by adding a newline separator before the new content.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -36,23 +36,25 @@ const InputSchema = z
     content: z
       .string()
       .min(1)
-      .describe('Content to append to the end of the note.'),
+      .describe('The content to append to the end of the note.'),
   })
-  .describe('Parameters for appending to the active note.');
+  .describe('The parameters for appending content to the active note.');
 
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('File path of the updated note.'),
-    contentLength: z
-      .number()
-      .describe('Total length of the note content after append.'),
+    path: z.string().describe('The file path of the updated note.'),
     appendedLength: z
       .number()
-      .describe('Length of the content that was appended.'),
-    size: z.number().describe('New file size in bytes.'),
+      .describe('The length of the content that was appended.'),
+    totalLength: z
+      .number()
+      .describe(
+        'The total length of the note content after the append operation.',
+      ),
+    size: z.number().describe('The new file size in bytes.'),
   })
-  .describe('Append operation result.');
+  .describe('The result of the append operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -77,8 +79,8 @@ async function toolLogic(
 
   return {
     path: note.path,
-    contentLength: note.content.length,
     appendedLength: input.content.length,
+    totalLength: note.content.length,
     size: note.stat?.size ?? note.content.length,
   };
 }
@@ -91,7 +93,7 @@ function responseFormatter(result: ToolResponse): ContentBlock[] {
     .list([
       `**Path:** ${result.path}`,
       `**Appended:** ${result.appendedLength} characters`,
-      `**Total length:** ${result.contentLength.toLocaleString()} characters`,
+      `**Total Length:** ${result.totalLength.toLocaleString()} characters`,
       `**New size:** ${result.size.toLocaleString()} bytes`,
     ]);
 

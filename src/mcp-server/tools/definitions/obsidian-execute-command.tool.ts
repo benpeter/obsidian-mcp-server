@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_execute_command';
 const TOOL_TITLE = 'Execute Command';
 const TOOL_DESCRIPTION =
-  'Execute an Obsidian command by its ID. Commands can perform various operations including editor actions, file management, workspace navigation, and plugin-specific functions. Use obsidian_list_commands to discover available command IDs. Non-idempotent operation.';
+  'Executes an Obsidian command by its ID, allowing for a wide range of operations like editor actions, file management, and plugin-specific functions. To find available command IDs, use the `obsidian_list_commands` tool. Note that this operation is not idempotent.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -37,7 +37,7 @@ const InputSchema = z
       .string()
       .min(1)
       .describe(
-        'ID of the command to execute. Use obsidian_list_commands to find available command IDs.',
+        'The ID of the command to execute. You can use `obsidian_list_commands` to discover the available command IDs.',
       ),
   })
   .describe('Parameters for executing an Obsidian command.');
@@ -45,13 +45,15 @@ const InputSchema = z
 // Output Schema
 const OutputSchema = z
   .object({
-    commandId: z.string().describe('The command ID that was executed.'),
+    commandId: z.string().describe('The ID of the command that was executed.'),
     executed: z
       .boolean()
-      .describe('Whether the command was successfully executed.'),
-    message: z.string().describe('Result message.'),
+      .describe('Indicates whether the command was successfully executed.'),
+    message: z
+      .string()
+      .describe('A message indicating the result of the command execution.'),
   })
-  .describe('Command execution result.');
+  .describe('The result of the command execution.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;

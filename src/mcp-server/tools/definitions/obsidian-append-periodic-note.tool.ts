@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_append_periodic_note';
 const TOOL_TITLE = 'Append to Periodic Note';
 const TOOL_DESCRIPTION =
-  'Append content to a periodic note (daily, weekly, monthly, quarterly, or yearly) in Obsidian. Can append to the current period note or a specific date. Automatically creates the note if it does not exist. Useful for journaling, logging, and time-based note capture.';
+  "Appends content to a periodic note (daily, weekly, monthly, quarterly, or yearly) in Obsidian. You can append to the current period or a specific date. The note is created automatically if it doesn't exist, making this ideal for journaling, logging, and other time-based captures.";
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -36,13 +36,13 @@ const InputSchema = z
     period: z
       .enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly'])
       .describe(
-        'Type of periodic note: daily, weekly, monthly, quarterly, or yearly.',
+        'The type of periodic note, such as daily, weekly, monthly, quarterly, or yearly.',
       ),
     content: z
       .string()
       .min(1)
       .describe(
-        'Content to append to the periodic note. Will be added at the end of existing content.',
+        'The content to append. It will be added at the end of the existing content.',
       ),
     year: z
       .number()
@@ -51,7 +51,7 @@ const InputSchema = z
       .max(2100)
       .optional()
       .describe(
-        'Year for the periodic note (e.g., 2024). Omit for current period.',
+        'The year of the periodic note (e.g., 2024). Omit to use the current period.',
       ),
     month: z
       .number()
@@ -60,7 +60,7 @@ const InputSchema = z
       .max(12)
       .optional()
       .describe(
-        'Month for the periodic note (1-12). Required for monthly/quarterly if year is specified.',
+        'The month of the periodic note (1-12). Required for monthly/quarterly notes if a year is specified.',
       ),
     day: z
       .number()
@@ -69,33 +69,35 @@ const InputSchema = z
       .max(31)
       .optional()
       .describe(
-        'Day of month for the periodic note (1-31). Required for daily/weekly if year/month specified.',
+        'The day of the month for the periodic note (1-31). Required for daily/weekly notes if a year/month is specified.',
       ),
   })
-  .describe('Parameters for appending to a periodic note.');
+  .describe('Parameters for appending content to a periodic note.');
 
 // Output Schema
 const OutputSchema = z
   .object({
-    period: z.string().describe('Type of periodic note updated.'),
-    path: z.string().describe('Path of the updated periodic note.'),
+    period: z.string().describe('The type of periodic note that was updated.'),
+    path: z.string().describe('The path of the updated periodic note.'),
     appendedLength: z
       .number()
-      .describe('Length of content that was appended (in characters).'),
+      .describe('The length of the content that was appended, in characters.'),
     totalLength: z
       .number()
-      .describe('Total length of note after appending (in characters).'),
-    size: z.number().describe('New file size in bytes.'),
+      .describe('The total length of the note after appending, in characters.'),
+    size: z.number().describe('The new file size in bytes.'),
     dateParams: z
       .object({
-        year: z.number().optional().describe('Year used.'),
-        month: z.number().optional().describe('Month used.'),
-        day: z.number().optional().describe('Day used.'),
+        year: z.number().optional().describe('The year that was used.'),
+        month: z.number().optional().describe('The month that was used.'),
+        day: z.number().optional().describe('The day that was used.'),
       })
       .optional()
-      .describe('Date parameters used (if specified).'),
+      .describe(
+        'The date parameters used for the operation, if they were specified.',
+      ),
   })
-  .describe('Append operation result.');
+  .describe('The result of the append operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -133,7 +135,7 @@ async function toolLogic(
     path: note.path,
     appendedLength: input.content.length,
     totalLength: note.content.length,
-    size: note.stat?.size || 0,
+    size: note.stat?.size ?? note.content.length,
   };
 
   // Add date parameters if specified

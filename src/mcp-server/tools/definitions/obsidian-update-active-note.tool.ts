@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_update_active_note';
 const TOOL_TITLE = 'Update Active Note';
 const TOOL_DESCRIPTION =
-  'Replace the entire content of the currently active note in Obsidian. This is a destructive operation that overwrites all existing content. Use for complete note rewrites.';
+  'Replaces the entire content of the currently active note in Obsidian. This is a destructive operation that overwrites all existing content, so it should be used for complete note rewrites.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -36,18 +36,18 @@ const InputSchema = z
     content: z
       .string()
       .min(0)
-      .describe('New content to replace the entire note.'),
+      .describe('The new content that will replace the entire note.'),
   })
-  .describe('Parameters for updating the active note content.');
+  .describe('Parameters for updating the content of the active note.');
 
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('File path of the updated note.'),
-    content: z.string().describe('New content of the note.'),
-    size: z.number().describe('New file size in bytes.'),
+    path: z.string().describe('The file path of the updated note.'),
+    content: z.string().describe('The new content of the note.'),
+    size: z.number().describe('The new file size in bytes.'),
   })
-  .describe('Updated note data.');
+  .describe('The data of the updated note.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;

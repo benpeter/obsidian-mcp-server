@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_patch_periodic_note';
 const TOOL_TITLE = 'Patch Periodic Note';
 const TOOL_DESCRIPTION =
-  'Perform surgical updates to specific sections of a periodic note using PATCH operations. Supports targeting headings, blocks, or frontmatter with various insertion strategies. Enables precise content modifications in time-based notes without rewriting the entire note.';
+  'Performs surgical updates to specific sections of a periodic note using PATCH operations. It supports targeting headings, blocks, or frontmatter with various insertion strategies, allowing for precise modifications in time-based notes without rewriting the entire file.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -36,28 +36,28 @@ const InputSchema = z
     period: z
       .enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly'])
       .describe(
-        'Type of periodic note: daily, weekly, monthly, quarterly, or yearly.',
+        'The type of periodic note, such as daily, weekly, or monthly.',
       ),
     operation: z
       .enum(['append', 'prepend', 'replace'])
       .describe(
-        'PATCH operation type: append (add after target), prepend (add before target), or replace (overwrite target).',
+        'The PATCH operation to perform: `append` (add after target), `prepend` (add before target), or `replace` (overwrite target).',
       ),
     targetType: z
       .enum(['heading', 'block', 'frontmatter'])
       .describe(
-        'Type of target to patch: heading (markdown heading), block (block reference), or frontmatter (YAML frontmatter).',
+        'The type of target to patch, which can be a `heading` (markdown heading), `block` (block reference), or `frontmatter` (YAML frontmatter).',
       ),
     target: z
       .string()
       .min(1)
       .describe(
-        'Target identifier: heading text for headings, block ID for blocks, or property key for frontmatter.',
+        'The identifier for the target, such as the heading text for headings, the block ID for blocks, or the property key for frontmatter.',
       ),
     content: z
       .string()
       .min(0)
-      .describe('Content to insert or use for replacement.'),
+      .describe('The content to be inserted or used for replacement.'),
     year: z
       .number()
       .int()
@@ -65,7 +65,7 @@ const InputSchema = z
       .max(2100)
       .optional()
       .describe(
-        'Year for the periodic note (e.g., 2024). Omit for current period.',
+        'The year of the periodic note (e.g., 2024). Omit to use the current period.',
       ),
     month: z
       .number()
@@ -74,7 +74,7 @@ const InputSchema = z
       .max(12)
       .optional()
       .describe(
-        'Month for the periodic note (1-12). Required for monthly/quarterly if year is specified.',
+        'The month of the periodic note (1-12). This is required for monthly or quarterly notes when a year is specified.',
       ),
     day: z
       .number()
@@ -83,7 +83,7 @@ const InputSchema = z
       .max(31)
       .optional()
       .describe(
-        'Day of month for the periodic note (1-31). Required for daily/weekly if year/month specified.',
+        'The day of the month for the periodic note (1-31). This is required for daily or weekly notes when a year and month are specified.',
       ),
   })
   .describe('Parameters for patching a periodic note.');
@@ -91,25 +91,27 @@ const InputSchema = z
 // Output Schema
 const OutputSchema = z
   .object({
-    period: z.string().describe('Type of periodic note patched.'),
-    path: z.string().describe('File path of the patched periodic note.'),
-    operation: z.string().describe('PATCH operation that was performed.'),
-    targetType: z.string().describe('Type of target that was patched.'),
-    target: z.string().describe('Target identifier that was modified.'),
+    period: z.string().describe('The type of periodic note that was patched.'),
+    path: z.string().describe('The file path of the patched periodic note.'),
+    operation: z.string().describe('The PATCH operation that was performed.'),
+    targetType: z.string().describe('The type of target that was patched.'),
+    target: z.string().describe('The target identifier that was modified.'),
     contentLength: z
       .number()
-      .describe('Total length of the note after patching.'),
-    size: z.number().describe('New file size in bytes.'),
+      .describe('The total length of the note after patching.'),
+    size: z.number().describe('The new file size in bytes.'),
     dateParams: z
       .object({
-        year: z.number().optional().describe('Year used.'),
-        month: z.number().optional().describe('Month used.'),
-        day: z.number().optional().describe('Day used.'),
+        year: z.number().optional().describe('The year that was used.'),
+        month: z.number().optional().describe('The month that was used.'),
+        day: z.number().optional().describe('The day that was used.'),
       })
       .optional()
-      .describe('Date parameters used (if specified).'),
+      .describe(
+        'The date parameters used for the operation, if they were specified.',
+      ),
   })
-  .describe('Patch operation result.');
+  .describe('The result of the patch operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -156,7 +158,7 @@ async function toolLogic(
     targetType: input.targetType,
     target: input.target,
     contentLength: note.content.length,
-    size: note.stat?.size || 0,
+    size: note.stat?.size ?? note.content.length,
   };
 
   // Add date parameters if specified

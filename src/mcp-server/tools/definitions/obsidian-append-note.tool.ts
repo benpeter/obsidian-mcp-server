@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_append_note';
 const TOOL_TITLE = 'Append to Note';
 const TOOL_DESCRIPTION =
-  'Append content to the end of a note in the Obsidian vault. Non-destructive operation that adds content after existing content. Useful for adding incremental updates, logs, or notes without replacing existing content.';
+  'Appends content to a specific note in the Obsidian vault. This is a non-destructive operation that adds content after the existing content, making it useful for incremental updates, logs, or adding to notes without replacing them.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -37,30 +37,30 @@ const InputSchema = z
       .string()
       .min(1)
       .describe(
-        'Path to the note relative to vault root. Can include or omit .md extension (e.g., "folder/note" or "folder/note.md").',
+        'The path to the note relative to the vault root. You can include or omit the .md extension (e.g., "folder/note" or "folder/note.md").',
       ),
     content: z
       .string()
       .min(1)
       .describe(
-        'Content to append to the note. Will be added at the end of the existing content.',
+        'The content to append to the note. It will be added at the end of the existing content.',
       ),
   })
-  .describe('Parameters for appending to a note.');
+  .describe('Parameters for appending content to a note.');
 
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('Path of the updated note.'),
+    path: z.string().describe('The path of the updated note.'),
     appendedLength: z
       .number()
-      .describe('Length of content that was appended (in characters).'),
+      .describe('The length of the content that was appended, in characters.'),
     totalLength: z
       .number()
-      .describe('Total length of note after appending (in characters).'),
-    size: z.number().describe('New file size in bytes.'),
+      .describe('The total length of the note after appending, in characters.'),
+    size: z.number().describe('The new file size in bytes.'),
   })
-  .describe('Append operation result.');
+  .describe('The result of the append operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
@@ -89,7 +89,7 @@ async function toolLogic(
     path: note.path,
     appendedLength: input.content.length,
     totalLength: note.content.length,
-    size: note.stat?.size || 0,
+    size: note.stat?.size ?? note.content.length,
   };
 }
 

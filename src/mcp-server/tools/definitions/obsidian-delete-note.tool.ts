@@ -22,7 +22,7 @@ import { JsonRpcErrorCode, McpError } from '@/types-global/errors.js';
 const TOOL_NAME = 'obsidian_delete_note';
 const TOOL_TITLE = 'Delete Note';
 const TOOL_DESCRIPTION =
-  'Delete a note from the Obsidian vault. This is a destructive and irreversible operation. Requires explicit confirmation via the confirm parameter set to true. Use with caution as deleted notes cannot be recovered unless backed up externally.';
+  'Deletes a note from the Obsidian vault. This is a destructive and irreversible operation, so it requires explicit confirmation. Use this tool with caution, as deleted notes cannot be recovered unless they are backed up externally.';
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -38,12 +38,12 @@ const InputSchema = z
       .string()
       .min(1)
       .describe(
-        'Path to the note to delete, relative to vault root. Can include or omit .md extension (e.g., "folder/note" or "folder/note.md").',
+        'The path to the note to be deleted, relative to the vault root. You can include or omit the .md extension (e.g., "folder/note" or "folder/note.md").',
       ),
     confirm: z
       .boolean()
       .describe(
-        'Explicit confirmation required to delete the note. Must be set to true to proceed with deletion. This safety check prevents accidental deletions.',
+        'You must set this to `true` to confirm the deletion. This is a safety measure to prevent accidental deletions.',
       ),
   })
   .describe('Parameters for deleting a note.');
@@ -51,11 +51,15 @@ const InputSchema = z
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('Path of the deleted note.'),
-    deleted: z.boolean().describe('Whether the note was successfully deleted.'),
-    message: z.string().describe('Confirmation message.'),
+    path: z.string().describe('The path of the note that was deleted.'),
+    deleted: z
+      .boolean()
+      .describe('Indicates whether the note was successfully deleted.'),
+    message: z
+      .string()
+      .describe('A confirmation message about the deletion status.'),
   })
-  .describe('Deletion result.');
+  .describe('The result of the deletion operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;

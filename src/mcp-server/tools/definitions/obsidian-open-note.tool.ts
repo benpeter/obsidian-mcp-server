@@ -21,7 +21,7 @@ import { ObsidianProvider } from '@/container/tokens.js';
 const TOOL_NAME = 'obsidian_open_note';
 const TOOL_TITLE = 'Open Note';
 const TOOL_DESCRIPTION =
-  'Open a note in the Obsidian user interface. Brings the specified note into focus in the editor. Optionally open in a new pane (leaf) to preserve the current view. Useful for navigation and bringing notes to user attention.';
+  "Opens a note in the Obsidian user interface, bringing it into focus. You can optionally open the note in a new pane (leaf) to preserve the current workspace. This is useful for navigation and bringing notes to the user's attention.";
 
 const TOOL_ANNOTATIONS: ToolAnnotations = {
   readOnlyHint: false,
@@ -37,13 +37,13 @@ const InputSchema = z
       .string()
       .min(1)
       .describe(
-        'Path to the note to open, relative to vault root. Can include or omit .md extension (e.g., "folder/note" or "folder/note.md").',
+        'The path to the note to open, relative to the vault root. You can include or omit the .md extension (e.g., "folder/note" or "folder/note.md").',
       ),
     newLeaf: z
       .boolean()
       .default(false)
       .describe(
-        'Whether to open the note in a new pane (leaf). If false, opens in the current pane.',
+        'Set to `true` to open the note in a new pane (leaf), or `false` to open it in the current pane. [Default: false]',
       ),
   })
   .describe('Parameters for opening a note in Obsidian.');
@@ -51,11 +51,15 @@ const InputSchema = z
 // Output Schema
 const OutputSchema = z
   .object({
-    path: z.string().describe('Path of the note that was opened.'),
-    newLeaf: z.boolean().describe('Whether the note was opened in a new pane.'),
-    message: z.string().describe('Result message.'),
+    path: z.string().describe('The path of the note that was opened.'),
+    newLeaf: z
+      .boolean()
+      .describe('Indicates whether the note was opened in a new pane.'),
+    message: z
+      .string()
+      .describe('A message confirming the result of the operation.'),
   })
-  .describe('Note open result.');
+  .describe('The result of the open note operation.');
 
 type ToolInput = z.infer<typeof InputSchema>;
 type ToolResponse = z.infer<typeof OutputSchema>;
