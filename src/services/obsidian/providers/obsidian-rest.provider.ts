@@ -64,7 +64,8 @@ export class ObsidianRestProvider implements IObsidianProvider {
       certValidation: obsidianConfig.certValidation,
     };
 
-    this.client = new ObsidianClient(this.config);
+    // Initialize client with logger for debug logging
+    this.client = new ObsidianClient(this.config, this.logger);
 
     // Initialize operation handlers
     this.noteOps = new NoteOperations(this.client, this.logger);
@@ -84,7 +85,8 @@ export class ObsidianRestProvider implements IObsidianProvider {
       ...appContext,
     });
 
-    const result = await this.client.testConnection();
+    // Pass appContext to enable logging correlation
+    const result = await this.client.testConnection(appContext);
 
     if (result.connected) {
       this.logger.info('Obsidian API health check passed', {
@@ -111,32 +113,32 @@ export class ObsidianRestProvider implements IObsidianProvider {
   // ===== Active Note Operations (delegated to NoteOperations) =====
 
   async getActiveNote(appContext: RequestContext): Promise<NoteJson> {
-    return this.noteOps.getActiveNote(appContext);
+    return await this.noteOps.getActiveNote(appContext);
   }
 
   async updateActiveNote(
     appContext: RequestContext,
     content: string,
   ): Promise<NoteJson> {
-    return this.noteOps.updateActiveNote(appContext, content);
+    return await this.noteOps.updateActiveNote(appContext, content);
   }
 
   async appendActiveNote(
     appContext: RequestContext,
     content: string,
   ): Promise<NoteJson> {
-    return this.noteOps.appendActiveNote(appContext, content);
+    return await this.noteOps.appendActiveNote(appContext, content);
   }
 
   async patchActiveNote(
     appContext: RequestContext,
     options: Omit<PatchOptions, 'path'>,
   ): Promise<NoteJson> {
-    return this.noteOps.patchActiveNote(appContext, options);
+    return await this.noteOps.patchActiveNote(appContext, options);
   }
 
   async deleteActiveNote(appContext: RequestContext): Promise<void> {
-    return this.noteOps.deleteActiveNote(appContext);
+    return await this.noteOps.deleteActiveNote(appContext);
   }
 
   // ===== General Note Operations (delegated to NoteOperations) =====
@@ -145,18 +147,18 @@ export class ObsidianRestProvider implements IObsidianProvider {
     appContext: RequestContext,
     path?: string,
   ): Promise<VaultFile[]> {
-    return this.noteOps.listVaultFiles(appContext, path);
+    return await this.noteOps.listVaultFiles(appContext, path);
   }
 
   async getNote(appContext: RequestContext, path: string): Promise<NoteJson> {
-    return this.noteOps.getNote(appContext, path);
+    return await this.noteOps.getNote(appContext, path);
   }
 
   async createNote(
     appContext: RequestContext,
     options: NoteOptions,
   ): Promise<NoteJson> {
-    return this.noteOps.createNote(appContext, options);
+    return await this.noteOps.createNote(appContext, options);
   }
 
   async appendNote(
@@ -164,18 +166,18 @@ export class ObsidianRestProvider implements IObsidianProvider {
     path: string,
     content: string,
   ): Promise<NoteJson> {
-    return this.noteOps.appendNote(appContext, path, content);
+    return await this.noteOps.appendNote(appContext, path, content);
   }
 
   async patchNote(
     appContext: RequestContext,
     options: PatchOptions,
   ): Promise<NoteJson> {
-    return this.noteOps.patchNote(appContext, options);
+    return await this.noteOps.patchNote(appContext, options);
   }
 
   async deleteNote(appContext: RequestContext, path: string): Promise<void> {
-    return this.noteOps.deleteNote(appContext, path);
+    return await this.noteOps.deleteNote(appContext, path);
   }
 
   // ===== Search Operations (delegated to SearchOperations) =====
@@ -184,21 +186,21 @@ export class ObsidianRestProvider implements IObsidianProvider {
     appContext: RequestContext,
     options: SearchOptions,
   ): Promise<SearchResult> {
-    return this.searchOps.searchSimple(appContext, options);
+    return await this.searchOps.searchSimple(appContext, options);
   }
 
   async searchDataview(
     appContext: RequestContext,
     query: string,
   ): Promise<SearchResult> {
-    return this.searchOps.searchDataview(appContext, query);
+    return await this.searchOps.searchDataview(appContext, query);
   }
 
   async searchJsonLogic(
     appContext: RequestContext,
     query: Record<string, unknown>,
   ): Promise<SearchResult> {
-    return this.searchOps.searchJsonLogic(appContext, query);
+    return await this.searchOps.searchJsonLogic(appContext, query);
   }
 
   // ===== Periodic Notes Operations (delegated to PeriodicOperations) =====
@@ -207,7 +209,7 @@ export class ObsidianRestProvider implements IObsidianProvider {
     appContext: RequestContext,
     params: PeriodicNoteParams,
   ): Promise<NoteJson> {
-    return this.periodicOps.getPeriodicNote(appContext, params);
+    return await this.periodicOps.getPeriodicNote(appContext, params);
   }
 
   async appendPeriodicNote(
@@ -215,7 +217,11 @@ export class ObsidianRestProvider implements IObsidianProvider {
     params: PeriodicNoteParams,
     content: string,
   ): Promise<NoteJson> {
-    return this.periodicOps.appendPeriodicNote(appContext, params, content);
+    return await this.periodicOps.appendPeriodicNote(
+      appContext,
+      params,
+      content,
+    );
   }
 
   async patchPeriodicNote(
@@ -223,27 +229,31 @@ export class ObsidianRestProvider implements IObsidianProvider {
     params: PeriodicNoteParams,
     patchOptions: Omit<PatchOptions, 'path'>,
   ): Promise<NoteJson> {
-    return this.periodicOps.patchPeriodicNote(appContext, params, patchOptions);
+    return await this.periodicOps.patchPeriodicNote(
+      appContext,
+      params,
+      patchOptions,
+    );
   }
 
   async deletePeriodicNote(
     appContext: RequestContext,
     params: PeriodicNoteParams,
   ): Promise<void> {
-    return this.periodicOps.deletePeriodicNote(appContext, params);
+    return await this.periodicOps.deletePeriodicNote(appContext, params);
   }
 
   // ===== Commands & UI Operations (delegated to CommandOperations) =====
 
   async listCommands(appContext: RequestContext): Promise<Command[]> {
-    return this.commandOps.listCommands(appContext);
+    return await this.commandOps.listCommands(appContext);
   }
 
   async executeCommand(
     appContext: RequestContext,
     commandId: string,
   ): Promise<void> {
-    return this.commandOps.executeCommand(appContext, commandId);
+    return await this.commandOps.executeCommand(appContext, commandId);
   }
 
   async openNote(
@@ -251,6 +261,6 @@ export class ObsidianRestProvider implements IObsidianProvider {
     path: string,
     newLeaf?: boolean,
   ): Promise<void> {
-    return this.commandOps.openNote(appContext, path, newLeaf);
+    return await this.commandOps.openNote(appContext, path, newLeaf);
   }
 }
