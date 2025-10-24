@@ -309,3 +309,5 @@ All config validated via Zod in `src/config/index.ts`. Derives `serviceName`/`ve
 - [ ] Validate Worker bundle (`build:worker`)
 
 Follow this document precisely.
+
+ALWAYS ALWAYS ALWAYS read the file before trying to edit it

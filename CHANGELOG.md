@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0-alpha03] - 2025-10-24
+
+### Added
+
+- Added `OBSIDIAN_COMMAND_TOOLS_ENABLED` configuration option for enhanced security (allows disabling command execution tools)
+- Added pagination support to list and search tools with `limit`, `offset`, and `hasMore` fields:
+  - `obsidian_list_commands`: Paginate through available Obsidian commands
+  - `obsidian_list_vault_files`: Paginate through vault directory listings
+  - `obsidian_search_simple`: Paginate through simple text search results
+  - `obsidian_search_dataview`: Paginate through Dataview query results
+  - `obsidian_search_jsonlogic`: Paginate through JsonLogic query results
+- Added new utility modules for improved Obsidian service architecture:
+  - `src/services/obsidian/types/api-responses.ts`: Type definitions and extractors for API responses
+  - `src/services/obsidian/utils/patch-builder.ts`: Builder for PATCH operation headers
+  - `src/services/obsidian/utils/validators.ts`: Comprehensive input validation utilities
+- Added `executeOperation` wrapper in OperationBase for consistent error handling and logging
+- Added helper methods for API calls (apiGet, apiPost, apiPut, apiPatch, apiDelete) with built-in error handling
+
+### Changed
+
+- Updated dependency versions:
+  - `@modelcontextprotocol/sdk` from 1.20.1 to 1.20.2
+  - `@vitest/coverage-v8` from 4.0.2 to 4.0.3
+  - `hono` from 4.10.2 to 4.10.3
+  - `openai` from 6.6.0 to 6.7.0
+  - `vitest` from 4.0.2 to 4.0.3
+- Rewrote all Obsidian tool descriptions to be more conversational and LLM-friendly
+- Enhanced input and output schema descriptions across all 19 Obsidian tools for improved LLM comprehension
+- Refactored Obsidian service provider architecture with centralized error handling and validation
+- Refactored all operation handlers to use new `executeOperation` pattern for consistency
+- Improved ObsidianClient dispatcher configuration tracking and management
+- Enhanced response formatters for paginated results with clear navigation hints
+
+### Fixed
+
+- Fixed inconsistent response field naming (e.g., `contentLength` → `totalLength` in append operations)
+- Fixed Issue #3: Applied proper path encoding for special characters in vault file listing
+- Improved error handling consistency across all Obsidian operations
+- Enhanced type safety in API response extraction and validation
+
+---
+
 ## [2.1.0-alpha02] - 2025-10-24
 
 ### Added

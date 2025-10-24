@@ -1,6 +1,6 @@
 # obsidian-mcp-server - Directory Structure
 
-Generated on: 2025-10-23 22:52:20
+Generated on: 2025-10-24 17:48:16
 
 ```
 obsidian-mcp-server
@@ -414,12 +414,15 @@ obsidian-mcp-server
 │   │   │   │   │   └── types.ts
 │   │   │   │   └── obsidian-rest.provider.ts
 │   │   │   ├── types
+│   │   │   │   ├── api-responses.ts
 │   │   │   │   └── obsidian-api.ts
 │   │   │   ├── utils
 │   │   │   │   ├── error-mapper.ts
 │   │   │   │   ├── markdown-parser.ts
+│   │   │   │   ├── patch-builder.ts
 │   │   │   │   ├── path-normalizer.ts
-│   │   │   │   └── response-mapper.ts
+│   │   │   │   ├── response-mapper.ts
+│   │   │   │   └── validators.ts
 │   │   │   ├── index.ts
 │   │   │   └── types.ts
 │   │   ├── speech
