@@ -275,7 +275,7 @@ All config validated via Zod in `src/config/index.ts`. Derives `serviceName`/`ve
 | **Auth**      | `MCP_AUTH_MODE` (`none`\|`jwt`\|`oauth`), `MCP_AUTH_SECRET_KEY`, `OAUTH_*`                                      |
 | **Storage**   | `STORAGE_PROVIDER_TYPE` (`in-memory`\|`filesystem`\|`supabase`\|`surrealdb`\|`cloudflare-r2/kv`), `SURREALDB_*` |
 | **LLM**       | `OPENROUTER_API_KEY`, `OPENROUTER_APP_URL/NAME`, `LLM_DEFAULT_*`                                                |
-| **Obsidian**  | `OBSIDIAN_BASE_URL`, `OBSIDIAN_API_KEY`, `OBSIDIAN_VERIFY_SSL`                                                  |
+| **Obsidian**  | `OBSIDIAN_BASE_URL`, `OBSIDIAN_API_KEY`, `OBSIDIAN_VERIFY_SSL`, `OBSIDIAN_COMMAND_TOOLS_ENABLED`                |
 | **Telemetry** | `OTEL_ENABLED`, `OTEL_SERVICE_NAME/VERSION`, `OTEL_EXPORTER_OTLP_*`                                             |
 
 ---
@@ -296,7 +296,42 @@ All config validated via Zod in `src/config/index.ts`. Derives `serviceName`/`ve
 
 ---
 
-## XIV. Quick Checklist
+## XIV. Obsidian-Specific Patterns
+
+### Pagination Pattern
+
+Obsidian list and search tools use **offset-based pagination** (not cursor-based) for simplicity and compatibility with the Obsidian Local REST API:
+
+- **Input parameters**: `limit` (default: 100, max: 500), `offset` (default: 0)
+- **Output fields**: `limit`, `offset`, `hasMore` (boolean indicating more results available)
+- **Implementation**: Use `Array.slice(offset, offset + limit)` to paginate in-memory results
+- **Tools with pagination**: `obsidian_list_commands`, `obsidian_list_vault_files`, `obsidian_search_simple`, `obsidian_search_dataview`, `obsidian_search_jsonlogic`
+
+Example schema:
+```typescript
+const InputSchema = z.object({
+  // ... other params
+  limit: z.number().int().min(1).max(500).default(100)
+    .describe('The maximum number of results to return per page. [Default: 100, Max: 500]'),
+  offset: z.number().int().min(0).default(0)
+    .describe('The number of results to skip for pagination. [Default: 0]'),
+});
+
+const OutputSchema = z.object({
+  // ... other fields
+  limit: z.number().describe('The maximum number of results returned per page.'),
+  offset: z.number().describe('The number of results that were skipped for pagination.'),
+  hasMore: z.boolean().describe('Indicates whether more results are available on a subsequent page.'),
+});
+```
+
+### Security Configuration
+
+**Command Tool Control**: The `OBSIDIAN_COMMAND_TOOLS_ENABLED` config (default: `true`) allows disabling `obsidian_execute_command` and `obsidian_list_commands` tools for security. Implementation in `tool-registration.ts` filters these tools before registration when disabled.
+
+---
+
+## XV. Quick Checklist
 
 - [ ] Implement pure logic in `*.tool.ts`/`*.resource.ts` (no `try...catch`, throw `McpError`)
 - [ ] Apply auth with `withToolAuth`/`withResourceAuth`

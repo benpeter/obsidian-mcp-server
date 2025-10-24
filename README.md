@@ -39,6 +39,8 @@ This server provides 19 comprehensive tools for Obsidian vault operations, organ
 | **Commands**               | `obsidian_list_commands`        | List all available Obsidian commands                        |
 |                            | `obsidian_execute_command`      | Execute any Obsidian command by ID                          |
 
+> **✨ Pagination Support**: All list and search tools (`obsidian_list_commands`, `obsidian_list_vault_files`, `obsidian_search_simple`, `obsidian_search_dataview`, `obsidian_search_jsonlogic`) support pagination with `limit`, `offset`, and `hasMore` parameters. Default page size is 100 items (max: 500).
+
 ### Use Cases
 
 Integrate AI agents with your Obsidian workflows:
@@ -101,7 +103,8 @@ Add the following to your MCP Client configuration file (e.g., `cline_mcp_settin
         "MCP_LOG_LEVEL": "info",
         "OBSIDIAN_BASE_URL": "https://127.0.0.1:27124",
         "OBSIDIAN_API_KEY": "your-api-key-here",
-        "OBSIDIAN_VERIFY_SSL": "false"
+        "OBSIDIAN_VERIFY_SSL": "false",
+        "OBSIDIAN_COMMAND_TOOLS_ENABLED": "true"
       }
     }
   }
@@ -122,7 +125,8 @@ Add the following to your MCP Client configuration file (e.g., `cline_mcp_settin
         "MCP_LOG_LEVEL": "info",
         "OBSIDIAN_BASE_URL": "https://127.0.0.1:27124",
         "OBSIDIAN_API_KEY": "your-api-key-here",
-        "OBSIDIAN_VERIFY_SSL": "false"
+        "OBSIDIAN_VERIFY_SSL": "false",
+        "OBSIDIAN_COMMAND_TOOLS_ENABLED": "true"
       }
     }
   }
@@ -137,6 +141,7 @@ MCP_HTTP_PORT=3010
 OBSIDIAN_BASE_URL=https://127.0.0.1:27124
 OBSIDIAN_API_KEY=your-api-key-here
 OBSIDIAN_VERIFY_SSL=false
+OBSIDIAN_COMMAND_TOOLS_ENABLED=true
 ```
 
 #### SSL Certificate Notes
@@ -145,6 +150,12 @@ The Obsidian Local REST API uses a self-signed certificate by default. If you en
 
 1. Set `OBSIDIAN_VERIFY_SSL=false` (recommended for local use)
 2. Or, trust the self-signed certificate in your system
+
+#### Security Configuration
+
+For enhanced security, you can control which tools are available:
+
+- **`OBSIDIAN_COMMAND_TOOLS_ENABLED`**: Set to `false` to disable command execution tools (`obsidian_execute_command` and `obsidian_list_commands`). This prevents arbitrary command execution in your Obsidian vault. Default: `true`
 
 ### Development Environment Setup
 
@@ -186,6 +197,7 @@ cp .env.example .env
 # OBSIDIAN_BASE_URL=https://127.0.0.1:27124
 # OBSIDIAN_API_KEY=your-api-key-here
 # OBSIDIAN_VERIFY_SSL=false
+# OBSIDIAN_COMMAND_TOOLS_ENABLED=true
 ```
 
 ## ✨ Server Features
