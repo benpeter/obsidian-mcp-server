@@ -54,7 +54,7 @@ describe('obsidian-list-vault-files tool', () => {
 
       vi.mocked(mockProvider.listVaultFiles).mockResolvedValue(mockFiles);
 
-      const input = {};
+      const input = { limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianListVaultFilesTool.logic(
         input,
@@ -83,7 +83,7 @@ describe('obsidian-list-vault-files tool', () => {
 
       vi.mocked(mockProvider.listVaultFiles).mockResolvedValue(mockFiles);
 
-      const input = { path: 'docs' };
+      const input = { path: 'docs', limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianListVaultFilesTool.logic(
         input,
@@ -114,6 +114,10 @@ describe('obsidian-list-vault-files tool', () => {
         ],
         fileCount: 1,
         folderCount: 1,
+        totalCount: 2,
+        limit: 100,
+        offset: 0,
+        hasMore: false,
       };
 
       const formatted = obsidianListVaultFilesTool.responseFormatter!(result);

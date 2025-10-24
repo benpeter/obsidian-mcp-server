@@ -87,7 +87,7 @@ describe('obsidian-append-active-note tool', () => {
       );
       expect(result.path).toBe('test.md');
       expect(result.appendedLength).toBe(16);
-      expect(result.contentLength).toBe(33);
+      expect(result.totalLength).toBe(33);
     });
   });
 
@@ -96,7 +96,7 @@ describe('obsidian-append-active-note tool', () => {
       const result = {
         path: 'test.md',
         appendedLength: 16,
-        contentLength: 100,
+        totalLength: 100,
         size: 150,
       };
 

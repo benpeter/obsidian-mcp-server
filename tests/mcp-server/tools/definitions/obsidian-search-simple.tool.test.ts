@@ -74,7 +74,7 @@ describe('obsidian-search-simple tool', () => {
 
       vi.mocked(mockProvider.searchSimple).mockResolvedValue(mockResults);
 
-      const input = { query: 'test query' };
+      const input = { query: 'test query', limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianSearchSimpleTool.logic(
         input,
@@ -95,7 +95,12 @@ describe('obsidian-search-simple tool', () => {
     it('should handle contextLength parameter', async () => {
       vi.mocked(mockProvider.searchSimple).mockResolvedValue([]);
 
-      const input = { query: 'test', contextLength: 150 };
+      const input = {
+        query: 'test',
+        contextLength: 150,
+        limit: 100,
+        offset: 0,
+      };
       const context = requestContextService.createRequestContext();
       await obsidianSearchSimpleTool.logic(input, context, {} as any);
 
@@ -126,6 +131,9 @@ describe('obsidian-search-simple tool', () => {
             ],
           },
         ],
+        limit: 100,
+        offset: 0,
+        hasMore: false,
       };
 
       const formatted = obsidianSearchSimpleTool.responseFormatter!(result);

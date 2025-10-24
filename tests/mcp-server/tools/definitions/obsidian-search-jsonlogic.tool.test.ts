@@ -60,7 +60,7 @@ describe('obsidian-search-jsonlogic tool', () => {
       vi.mocked(mockProvider.searchJsonLogic).mockResolvedValue(mockResults);
 
       const query = { glob: { path: 'docs/*.md' } };
-      const input = { query };
+      const input = { query, limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianSearchJsonLogicTool.logic(
         input,
@@ -83,6 +83,9 @@ describe('obsidian-search-jsonlogic tool', () => {
         query: { glob: { path: '*.md' } },
         resultCount: 2,
         results: [{ filename: 'note.md' }],
+        limit: 100,
+        offset: 0,
+        hasMore: false,
       };
 
       const formatted = obsidianSearchJsonLogicTool.responseFormatter!(result);

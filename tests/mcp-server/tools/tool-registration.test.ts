@@ -6,16 +6,25 @@ import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { ToolRegistry } from '@/mcp-server/tools/tool-registration.js';
 import type { ToolDefinition } from '@/mcp-server/tools/utils/toolDefinition.js';
 import { z } from 'zod';
+import type { AppConfig } from '@/config/index.js';
 
 describe('ToolRegistry', () => {
   let mockServer: any;
   let registry: ToolRegistry;
+  let mockConfig: AppConfig;
 
   beforeEach(() => {
     // Create a mock MCP server
     mockServer = {
       registerTool: vi.fn(() => {}),
     };
+
+    // Create a minimal mock config
+    mockConfig = {
+      obsidian: {
+        commandToolsEnabled: true,
+      },
+    } as AppConfig;
   });
 
   describe('Tool Registration', () => {
@@ -30,7 +39,7 @@ describe('ToolRegistry', () => {
         }),
       };
 
-      registry = new ToolRegistry([testTool]);
+      registry = new ToolRegistry([testTool], mockConfig);
       await registry.registerAll(mockServer);
 
       expect(mockServer.registerTool).toHaveBeenCalledTimes(1);
@@ -57,14 +66,14 @@ describe('ToolRegistry', () => {
         logic: async () => ({}),
       };
 
-      registry = new ToolRegistry([tool1, tool2]);
+      registry = new ToolRegistry([tool1, tool2], mockConfig);
       await registry.registerAll(mockServer);
 
       expect(mockServer.registerTool).toHaveBeenCalledTimes(2);
     });
 
     it('should handle empty tool list', async () => {
-      registry = new ToolRegistry([]);
+      registry = new ToolRegistry([], mockConfig);
       await registry.registerAll(mockServer);
 
       expect(mockServer.registerTool).toHaveBeenCalledTimes(0);
@@ -82,7 +91,7 @@ describe('ToolRegistry', () => {
         logic: async () => ({}),
       };
 
-      registry = new ToolRegistry([toolWithTitle]);
+      registry = new ToolRegistry([toolWithTitle], mockConfig);
       await registry.registerAll(mockServer);
 
       const call = mockServer.registerTool.mock.calls[0];
@@ -101,7 +110,7 @@ describe('ToolRegistry', () => {
         },
       };
 
-      registry = new ToolRegistry([toolWithAnnotationTitle]);
+      registry = new ToolRegistry([toolWithAnnotationTitle], mockConfig);
       await registry.registerAll(mockServer);
 
       const call = mockServer.registerTool.mock.calls[0];
@@ -117,7 +126,7 @@ describe('ToolRegistry', () => {
         logic: async () => ({}),
       };
 
-      registry = new ToolRegistry([toolWithoutTitle]);
+      registry = new ToolRegistry([toolWithoutTitle], mockConfig);
       await registry.registerAll(mockServer);
 
       const call = mockServer.registerTool.mock.calls[0];
@@ -138,7 +147,7 @@ describe('ToolRegistry', () => {
         },
       };
 
-      registry = new ToolRegistry([tool]);
+      registry = new ToolRegistry([tool], mockConfig);
       await registry.registerAll(mockServer);
 
       const call = mockServer.registerTool.mock.calls[0];
@@ -161,7 +170,7 @@ describe('ToolRegistry', () => {
         logic: async (input) => ({ greeting: `Hello ${input.name}` }),
       };
 
-      registry = new ToolRegistry([tool]);
+      registry = new ToolRegistry([tool], mockConfig);
       await registry.registerAll(mockServer);
 
       const call = mockServer.registerTool.mock.calls[0];
@@ -187,7 +196,7 @@ describe('ToolRegistry', () => {
         },
       };
 
-      registry = new ToolRegistry([toolWithAnnotations]);
+      registry = new ToolRegistry([toolWithAnnotations], mockConfig);
       await registry.registerAll(mockServer);
 
       const call = mockServer.registerTool.mock.calls[0];
@@ -206,7 +215,7 @@ describe('ToolRegistry', () => {
         logic: async () => ({}),
       };
 
-      registry = new ToolRegistry([toolWithoutAnnotations]);
+      registry = new ToolRegistry([toolWithoutAnnotations], mockConfig);
       await registry.registerAll(mockServer);
 
       const call = mockServer.registerTool.mock.calls[0];
@@ -229,7 +238,7 @@ describe('ToolRegistry', () => {
         responseFormatter: customFormatter,
       };
 
-      registry = new ToolRegistry([tool]);
+      registry = new ToolRegistry([tool], mockConfig);
       await registry.registerAll(mockServer);
 
       expect(mockServer.registerTool).toHaveBeenCalledTimes(1);
@@ -246,7 +255,7 @@ describe('ToolRegistry', () => {
         logic: async () => ({}),
       };
 
-      registry = new ToolRegistry([tool]);
+      registry = new ToolRegistry([tool], mockConfig);
       await registry.registerAll(mockServer);
 
       const handler = mockServer.registerTool.mock.calls[0][2];
@@ -280,7 +289,7 @@ describe('ToolRegistry', () => {
         },
       ];
 
-      registry = new ToolRegistry(tools);
+      registry = new ToolRegistry(tools, mockConfig);
       await registry.registerAll(mockServer);
 
       expect(mockServer.registerTool.mock.calls[0][0]).toBe('first');
@@ -314,7 +323,7 @@ describe('ToolRegistry', () => {
         }),
       };
 
-      registry = new ToolRegistry([complexTool]);
+      registry = new ToolRegistry([complexTool], mockConfig);
       await registry.registerAll(mockServer);
 
       expect(mockServer.registerTool).toHaveBeenCalledTimes(1);

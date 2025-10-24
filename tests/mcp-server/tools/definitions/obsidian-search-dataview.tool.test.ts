@@ -55,7 +55,7 @@ describe('obsidian-search-dataview tool', () => {
 
       vi.mocked(mockProvider.searchDataview).mockResolvedValue(mockResults);
 
-      const input = { query: 'LIST FROM #project' };
+      const input = { query: 'LIST FROM #project', limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianSearchDataviewTool.logic(
         input,
@@ -78,6 +78,9 @@ describe('obsidian-search-dataview tool', () => {
         query: 'LIST FROM #tag',
         resultCount: 2,
         results: [{ filename: 'note.md' }],
+        limit: 100,
+        offset: 0,
+        hasMore: false,
       };
 
       const formatted = obsidianSearchDataviewTool.responseFormatter!(result);

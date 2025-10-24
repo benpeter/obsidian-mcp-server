@@ -54,7 +54,7 @@ describe('obsidian-list-commands tool', () => {
 
       vi.mocked(mockProvider.listCommands).mockResolvedValue(mockCommands);
 
-      const input = {};
+      const input = { limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianListCommandsTool.logic(
         input,
@@ -78,7 +78,7 @@ describe('obsidian-list-commands tool', () => {
 
       vi.mocked(mockProvider.listCommands).mockResolvedValue(mockCommands);
 
-      const input = { filter: 'editor' };
+      const input = { filter: 'editor', limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianListCommandsTool.logic(
         input,
@@ -101,7 +101,7 @@ describe('obsidian-list-commands tool', () => {
 
       vi.mocked(mockProvider.listCommands).mockResolvedValue(mockCommands);
 
-      const input = { filter: 'EDITOR' };
+      const input = { filter: 'EDITOR', limit: 100, offset: 0 };
       const context = requestContextService.createRequestContext();
       const result = await obsidianListCommandsTool.logic(
         input,
@@ -121,6 +121,9 @@ describe('obsidian-list-commands tool', () => {
           { id: 'cmd1', name: 'Command 1' },
           { id: 'cmd2', name: 'Command 2' },
         ],
+        limit: 100,
+        offset: 0,
+        hasMore: false,
       };
 
       const formatted = obsidianListCommandsTool.responseFormatter!(result);
