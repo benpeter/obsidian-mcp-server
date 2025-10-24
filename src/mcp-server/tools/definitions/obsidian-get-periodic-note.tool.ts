@@ -169,7 +169,7 @@ async function toolLogic(
 
   // Add frontmatter if available
   if (note.frontmatter && Object.keys(note.frontmatter).length > 0) {
-    response.frontmatter = note.frontmatter as Record<string, unknown>;
+    response.frontmatter = note.frontmatter;
   }
 
   // Add enriched metadata if requested

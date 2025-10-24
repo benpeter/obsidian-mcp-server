@@ -39,31 +39,31 @@ import { obsidianOpenNoteTool } from './obsidian-open-note.tool.js';
  */
 export const allToolDefinitions = [
   // Obsidian - Active Note Operations
-  obsidianGetActiveNoteTool,
-  obsidianUpdateActiveNoteTool,
   obsidianAppendActiveNoteTool,
+  obsidianGetActiveNoteTool,
   obsidianPatchActiveNoteTool,
+  obsidianUpdateActiveNoteTool,
 
   // Obsidian - General Note Operations
-  obsidianListVaultFilesTool,
-  obsidianGetNoteTool,
-  obsidianCreateNoteTool,
   obsidianAppendNoteTool,
-  obsidianPatchNoteTool,
+  obsidianCreateNoteTool,
   obsidianDeleteNoteTool,
+  obsidianGetNoteTool,
+  obsidianListVaultFilesTool,
+  obsidianPatchNoteTool,
 
   // Obsidian - Search Operations
-  obsidianSearchSimpleTool,
   obsidianSearchDataviewTool,
   obsidianSearchJsonLogicTool,
+  obsidianSearchSimpleTool,
 
   // Obsidian - Periodic Note Operations
-  obsidianGetPeriodicNoteTool,
   obsidianAppendPeriodicNoteTool,
+  obsidianGetPeriodicNoteTool,
   obsidianPatchPeriodicNoteTool,
 
   // Obsidian - Commands & UI Operations
-  obsidianListCommandsTool,
   obsidianExecuteCommandTool,
+  obsidianListCommandsTool,
   obsidianOpenNoteTool,
 ];
