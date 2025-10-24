@@ -4,10 +4,12 @@
  */
 
 import createClient, { type Client } from 'openapi-fetch';
+import { Agent, setGlobalDispatcher } from 'undici';
 import type { paths } from '../types/obsidian-api.js';
 import type { ObsidianConfig } from '../types.js';
 import { validateObsidianConfig } from '../utils/error-mapper.js';
-import https from 'node:https';
+import { logger } from '@/utils/index.js';
+import type { RequestContext } from '@/utils/index.js';
 
 /**
  * Default timeout for Obsidian API requests (in milliseconds)
@@ -15,16 +17,14 @@ import https from 'node:https';
 const DEFAULT_TIMEOUT = 10000; // 10 seconds
 
 /**
- * Detect if running in Node.js environment
- * @returns True if running in Node.js
+ * Detect if running in Bun environment
  */
-function isNodeEnvironment(): boolean {
-  return (
-    typeof process !== 'undefined' &&
-    process.versions != null &&
-    process.versions.node != null
-  );
-}
+const isBun = typeof Bun !== 'undefined';
+
+/**
+ * Global flag to track if undici dispatcher has been configured
+ */
+let undiciDispatcherConfigured = false;
 
 /**
  * Create custom fetch function with timeout and optional certificate validation
@@ -36,19 +36,51 @@ function createCustomFetch(
   config: ObsidianConfig,
   timeout: number = DEFAULT_TIMEOUT,
 ) {
+  // For Node.js with HTTPS, configure undici's global dispatcher once
+  // This affects all undici/fetch calls globally
+  if (
+    !isBun &&
+    config.apiUrl.startsWith('https://') &&
+    !undiciDispatcherConfigured
+  ) {
+    const agent = new Agent({
+      connect: {
+        rejectUnauthorized: config.certValidation,
+      },
+    });
+    setGlobalDispatcher(agent);
+    undiciDispatcherConfigured = true;
+  }
+
   return async (
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> => {
-    const fetchOptions: RequestInit = { ...init };
+    // Handle Request objects by extracting URL and merging init options
+    let url: string | URL;
+    const baseOptions: RequestInit = { ...init };
 
-    // Add HTTPS agent for certificate validation (Node.js only)
-    if (isNodeEnvironment() && config.apiUrl.startsWith('https://')) {
-      const agent = new https.Agent({
-        rejectUnauthorized: config.certValidation,
+    if (input instanceof Request) {
+      url = input.url;
+      // Merge Request properties with init options
+      Object.assign(baseOptions, {
+        method: input.method,
+        headers: input.headers,
+        body: input.body || undefined,
       });
-      // @ts-expect-error - agent is Node.js specific
-      fetchOptions.agent = agent;
+    } else {
+      url = input;
+    }
+
+    const fetchOptions: RequestInit = { ...baseOptions };
+
+    // For Bun with HTTPS, add TLS options
+    if (isBun && config.apiUrl.startsWith('https://')) {
+      Object.assign(fetchOptions, {
+        tls: {
+          rejectUnauthorized: config.certValidation,
+        },
+      });
     }
 
     // Add timeout using AbortController
@@ -56,7 +88,7 @@ function createCustomFetch(
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
-      const response = await fetch(input, {
+      const response = await fetch(url, {
         ...fetchOptions,
         signal: controller.signal,
       });
@@ -105,10 +137,13 @@ export function createObsidianClient(
  * ObsidianClient class wrapping the openapi-fetch client
  */
 export class ObsidianClient {
-  private client: Client<paths>;
+  private readonly client: Client<paths>;
+  private readonly loggerInstance: typeof logger | undefined;
 
-  constructor(config: ObsidianConfig) {
-    this.client = createObsidianClient(config);
+  constructor(config: ObsidianConfig, loggerInstance?: typeof logger) {
+    this.loggerInstance = loggerInstance;
+    this.client = createObsidianClient(config, DEFAULT_TIMEOUT);
+    // Note: Initialization logging happens at provider level with proper RequestContext
   }
 
   /**
@@ -120,27 +155,62 @@ export class ObsidianClient {
 
   /**
    * Test API connectivity
+   * @param appContext - Optional request context for logging correlation
    * @returns Object with connection status and optional error details
    */
-  async testConnection(): Promise<{
+  async testConnection(appContext?: RequestContext): Promise<{
     connected: boolean;
     error?: string;
   }> {
+    // Only log when we have proper RequestContext from caller
+    if (this.loggerInstance && appContext) {
+      this.loggerInstance.debug('Testing Obsidian API connection', {
+        ...appContext,
+        operation: 'testConnection',
+      });
+    }
+
     try {
       // Try to list vault root to test connection
       const response = await this.client.GET('/vault/');
 
       if (response.response.ok) {
+        if (this.loggerInstance && appContext) {
+          this.loggerInstance.debug('Obsidian API connection successful', {
+            ...appContext,
+            operation: 'testConnection',
+            httpStatus: response.response.status,
+          });
+        }
         return { connected: true };
+      }
+
+      const errorMsg = `HTTP ${response.response.status}: ${response.response.statusText}`;
+      if (this.loggerInstance && appContext) {
+        this.loggerInstance.debug('Obsidian API connection failed', {
+          ...appContext,
+          operation: 'testConnection',
+          httpStatus: response.response.status,
+          error: errorMsg,
+        });
       }
 
       return {
         connected: false,
-        error: `HTTP ${response.response.status}: ${response.response.statusText}`,
+        error: errorMsg,
       };
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown connection error';
+
+      if (this.loggerInstance && appContext) {
+        this.loggerInstance.debug('Obsidian API connection error', {
+          ...appContext,
+          operation: 'testConnection',
+          error: errorMessage,
+        });
+      }
+
       return {
         connected: false,
         error: errorMessage,
