@@ -236,7 +236,15 @@ const ConfigSchema = z.object({
     .object({
       apiUrl: z.string().url().default('https://127.0.0.1:27124'),
       apiToken: z.string().optional(),
-      certValidation: z.coerce.boolean().default(false),
+      certValidation: z
+        .preprocess((val) => {
+          if (typeof val === 'string') {
+            const lower = val.toLowerCase().trim();
+            return lower === 'true' || lower === '1' || lower === 'yes';
+          }
+          return Boolean(val);
+        }, z.boolean())
+        .default(false),
     })
     .optional(),
 });
