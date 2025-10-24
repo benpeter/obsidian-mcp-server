@@ -4,9 +4,11 @@
  * @module src/mcp-server/prompts/definitions
  */
 
-import { codeReviewPrompt } from './code-review.prompt.js';
+import type { PromptDefinition } from '../utils/promptDefinition.js';
+
+// import { codeReviewPrompt } from './code-review.prompt.js';
 
 /**
  * An array containing all prompt definitions for easy iteration.
  */
-export const allPromptDefinitions = [codeReviewPrompt];
+export const allPromptDefinitions: PromptDefinition[] = []; // [codeReviewPrompt, otherPromptDefinition, ...]

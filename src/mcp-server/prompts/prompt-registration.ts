@@ -37,14 +37,24 @@ export class PromptRegistry {
     for (const promptDef of allPromptDefinitions) {
       this.logger.debug(`Registering prompt: ${promptDef.name}`, context);
 
+      // Build prompt options with optional argsSchema
+      const promptOptions: {
+        description: string;
+        argsSchema?: unknown;
+      } = {
+        description: promptDef.description,
+      };
+
+      // Use optional chaining to safely access shape
+      const schema = promptDef.argumentsSchema;
+      if (schema) {
+        // @ts-expect-error - TypeScript infers 'never' for empty arrays, but this code is safe when prompts exist
+        promptOptions.argsSchema = schema.shape;
+      }
+
       server.registerPrompt(
         promptDef.name,
-        {
-          description: promptDef.description,
-          ...(promptDef.argumentsSchema && {
-            argsSchema: promptDef.argumentsSchema.shape,
-          }),
-        },
+        promptOptions as Parameters<typeof server.registerPrompt>[1],
         async (args: Record<string, unknown>) => {
           const messages = await promptDef.generate(args as never);
           return { messages };
