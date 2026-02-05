@@ -14,6 +14,7 @@ import { Context, Next } from "hono";
 import { config } from "../../../../../config/index.js";
 import { BaseErrorCode, McpError } from "../../../../../types-global/errors.js";
 import { logger, requestContextService } from "../../../../../utils/index.js";
+import { ErrorHandler } from "../../../../../utils/internal/errorHandler.js";
 import { authContext } from "../../core/authContext.js";
 import type { AuthInfo } from "../../core/authTypes.js";
 
@@ -185,19 +186,22 @@ export async function tokenIntrospectionMiddleware(
       ? introspectionResult.scope.split(" ").filter(Boolean)
       : [];
 
-    // Extract client ID
+    // Extract client ID — required for consistency with jwt/oauth middleware
     const clientId = introspectionResult.client_id;
     if (!clientId) {
       logger.warning(
-        "Token introspection did not return a client_id.",
+        "Authentication failed: Token introspection did not return a client_id.",
         context,
       );
-      // Some providers may not return client_id, so we use a placeholder
+      throw new McpError(
+        BaseErrorCode.UNAUTHORIZED,
+        "Invalid token, missing client identifier.",
+      );
     }
 
     const authInfo: AuthInfo = {
       token,
-      clientId: clientId || "unknown",
+      clientId,
       scopes,
       subject: introspectionResult.sub,
     };
@@ -217,14 +221,20 @@ export async function tokenIntrospectionMiddleware(
       throw error;
     }
 
-    logger.error(
-      `Token introspection error: ${error instanceof Error ? error.message : String(error)}`,
+    const handledError = ErrorHandler.handleError(error, {
+      operation: "tokenIntrospectionMiddleware",
       context,
-    );
+      rethrow: false,
+    });
 
-    throw new McpError(
-      BaseErrorCode.UNAUTHORIZED,
-      `Token validation failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-    );
+    if (handledError instanceof McpError) {
+      throw handledError;
+    } else {
+      throw new McpError(
+        BaseErrorCode.UNAUTHORIZED,
+        `Token validation failed: ${handledError.message || "Unknown error"}`,
+        { originalError: handledError.name },
+      );
+    }
   }
 }
