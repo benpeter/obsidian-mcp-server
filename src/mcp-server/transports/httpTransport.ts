@@ -35,6 +35,7 @@ import {
 import {
   jwtAuthMiddleware,
   oauthMiddleware,
+  tokenIntrospectionMiddleware,
   type AuthInfo,
 } from "./auth/index.js";
 import { httpErrorHandler } from "./httpErrorHandler.js";
@@ -176,11 +177,15 @@ export async function startHttpTransport(
     await next();
   });
 
+  // Apply authentication middleware based on configured mode
   if (config.mcpAuthMode === "oauth") {
     app.use(MCP_ENDPOINT_PATH, oauthMiddleware);
-  } else {
+  } else if (config.mcpAuthMode === "introspection") {
+    app.use(MCP_ENDPOINT_PATH, tokenIntrospectionMiddleware);
+  } else if (config.mcpAuthMode === "jwt") {
     app.use(MCP_ENDPOINT_PATH, jwtAuthMiddleware);
   }
+  // If no auth mode is set, no authentication middleware is applied
 
   // Centralized Error Handling
   app.onError(httpErrorHandler);
